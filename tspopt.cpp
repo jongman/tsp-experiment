@@ -8,8 +8,10 @@
 #include<string>
 #include<vector>
 #include<fstream>
+#include<limits>
 using namespace std;
 
+const int INT_MAX = numeric_limits<int>::max();
 const int MAX_N = 101;
 
 int n;
@@ -96,6 +98,10 @@ class DFSSolver: public Solver {
 			orderSelector = selector;
 		}
 
+		void setFinishChecker(FinishChecker* checker) {
+			finishChecker = checker;
+		}
+
 		void addPruner(Pruner* pruner) {
 			pruners.push_back(pruner);
 		}
@@ -145,6 +151,84 @@ class DFSSolver: public Solver {
 				visited.flip(start);
 			}
 			return minLength;
+		}
+};
+
+class MemoizingFinishChecker : public FinishChecker {
+	public:
+		int bino[MAX_N][MAX_N];
+		int stateLimit, cacheDepth;
+		vector<vector<double> > cache[MAX_N];
+
+		MemoizingFinishChecker(int stateLimit) : stateLimit(stateLimit) {
+			calcBino();
+		}
+
+		void calcBino() {
+			memset(bino, 0, sizeof(bino));
+			for(int i = 0; i < MAX_N; ++i) {
+				bino[i][0] = 1;
+				for(int j = 1; j < i+1; j++) {
+					bino[i][j] = min(INT_MAX/2, bino[i-1][j-1] + bino[i-1][j]);
+				}
+			}
+		}
+
+		void determineCacheDepth() {
+			cacheDepth = 0;
+			int stateCount = n;
+
+			// determine depth of cache
+			while(true) {
+				int newStates = bino[n][cacheDepth+1] * n;
+				if(stateCount + newStates > stateLimit) break;
+				stateCount += newStates;
+				++cacheDepth;
+			}
+		}
+
+		int calcIndex(const vector<int>& selected) {
+			int ret = 0;
+			for(int i = 0; i < selected.size(); ++i)
+				ret += bino[n - selected[i] - 1][selected.size() - i];
+			return ret;
+		}
+
+		virtual void init() {
+			determineCacheDepth();
+
+			for(int i = 0; i < n; i++) {
+				cache[i].clear();
+				cache[i].resize(cacheDepth + 1);
+				for(int j = 1; j <= cacheDepth; j++) {
+					cache[i][j].resize(bino[n][j], -1);
+				}
+			}
+		}
+
+		double solve(int here, vector<int> toVisit) {
+			if(toVisit.empty()) return 0;
+			double& ret = cache[here][toVisit.size()][calcIndex(toVisit)];
+			if(ret >= 0) return ret;
+			ret = 1e200;
+			for(int i = 0; i < toVisit.size(); ++i) {
+				vector<int> toVisit2 = toVisit;
+				toVisit2.erase(toVisit2.begin() + i);
+
+				ret = min(ret, dist[here][toVisit[i]] + solve(toVisit[i], toVisit2));
+			}
+			return ret;
+		}
+
+		virtual pair<bool,double> isFinished(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			if(n - path.size() == cacheDepth) {
+				vector<int> toVisit;
+				for(int i = 0; i < n; i++)
+					if(!visited[i])
+						toVisit.push_back(i);
+				return make_pair(true, length + solve(path.back(), toVisit));
+			}
+			return make_pair(false, length);
 		}
 };
 
@@ -311,6 +395,8 @@ map<string, Solver*> solvers;
 void setupSolvers() {
 	solvers["Dummy"] = new DummySolver();
 
+
+	// SETUP SELECTORS
 	vector<string> selectorNames;
 	vector<OrderSelector*> selectors;
 
@@ -320,6 +406,17 @@ void setupSolvers() {
 	selectorNames.push_back("Nearest");
 	selectors.push_back(new NearestNeighborOrderSelector());
 
+	// SETUP FINISHCHECKERS
+	vector<string> checkerNames;
+	vector<FinishChecker*> checkers;
+
+	checkerNames.push_back("Default");
+	checkers.push_back(new FinishChecker());
+
+	checkerNames.push_back("Memoization");
+	checkers.push_back(new MemoizingFinishChecker(200000));
+
+	// SETUP PRUNERS
 	vector<string> prunerNames;
 	vector<Pruner*> pruners;
 
@@ -339,20 +436,25 @@ void setupSolvers() {
 	pruners.push_back(new MSTPruner());
 
 	int s = selectors.size();
+	int c = checkers.size();
 	int p = pruners.size();
 	for(int selector = 0; selector < s; ++selector) {
 		string base = "DFS:" + selectorNames[selector] + ":";
-		for(int prunerSet = 0; prunerSet < (1<<p); ++prunerSet) {
-			string name = base;
-			DFSSolver* solver = new DFSSolver();
-			solver->setOrderSelector(selectors[selector]);
-			for(int i = 0; i < p; i++) if(prunerSet & (1<<i)) {
-				if(name[name.size()-1] != ':')
-					name += ',';
-				name += prunerNames[i];
-				solver->addPruner(pruners[i]);
+		for(int checker = 0; checker < c; ++checker) {
+			string base2 = base + checkerNames[checker] + ":";
+			for(int prunerSet = 0; prunerSet < (1<<p); ++prunerSet) {
+				string name = base2;
+				DFSSolver* solver = new DFSSolver();
+				solver->setOrderSelector(selectors[selector]);
+				solver->setFinishChecker(checkers[checker]);
+				for(int i = 0; i < p; i++) if(prunerSet & (1<<i)) {
+					if(name[name.size()-1] != ':')
+						name += ',';
+					name += prunerNames[i];
+					solver->addPruner(pruners[i]);
+				}
+				solvers[name] = solver;
 			}
-			solvers[name] = solver;
 		}
 	}
 }
