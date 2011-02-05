@@ -59,21 +59,35 @@ class OrderSelector {
 		}
 };
 
+class FinishChecker {
+	public:
+		virtual void init() {}
+		virtual pair<bool,double> isFinished(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			if(path.size() == n) return make_pair(true, length);
+			return make_pair(false, length);
+		}
+};
+
 class DFSSolver: public Solver {
 	public:
 
 		double minLength;
-		vector<int> minPath;
 		vector<vector<int> > order;
 
 		vector<Pruner*> pruners;
 		OrderSelector* orderSelector;
+		FinishChecker* finishChecker;
 
 		virtual void init() {
 			for(int i = 0; i < pruners.size(); ++i)
 				pruners[i]->init();
+
 			if(!orderSelector)
 				orderSelector = new OrderSelector();
+
+			if(!finishChecker)
+				finishChecker = new FinishChecker();
+            finishChecker->init();
 
 			order = orderSelector->getOrder();
 		}
@@ -95,11 +109,9 @@ class DFSSolver: public Solver {
 
 		void dfs(vector<int>& path, bitset<MAX_N>& visited, double length) {
 			if(prune(path, visited, length)) return;
-			if(path.size() == n) {
-				if(length < minLength) {
-					minLength = length;
-					minPath = path;
-				}
+			pair<bool, double> isFinished = finishChecker->isFinished(*this, path, visited, length);
+			if(isFinished.first) {
+				minLength = length;
 				return;
 			}
 
