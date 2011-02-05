@@ -461,7 +461,7 @@ void setupSolvers() {
 	int c = checkers.size();
 	int p = estimators.size();
 	for(int selector = 0; selector < s; ++selector) {
-		string base = "DFS:" + selectorNames[selector] + ":";
+		string base = ":" + selectorNames[selector] + ":";
 		for(int checker = 0; checker < c; ++checker) {
 			string base2 = base + checkerNames[checker] + ":";
 			for(int estimatorSet = 0; estimatorSet < (1<<p); ++estimatorSet) {
@@ -475,7 +475,7 @@ void setupSolvers() {
 					name += estimatorNames[i];
 					solver->addEstimator(estimators[i]);
 				}
-				solvers[name] = solver;
+				solvers["DFS:" + name] = solver;
 			}
 		}
 	}
