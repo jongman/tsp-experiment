@@ -1,3 +1,4 @@
+#include<bitset>
 #include<cstring>
 #include<cstdio>
 #include<cmath>
@@ -7,8 +8,10 @@
 #include<fstream>
 using namespace std;
 
+const int MAX_N = 100;
+
 int n;
-double y[100], x[100], dist[100][100];
+double y[MAX_N], x[MAX_N], dist[MAX_N][MAX_N];
 
 void read(const char* fileName) {
 	ifstream inp(fileName);
@@ -31,7 +34,36 @@ class DummySolver: public Solver {
 		virtual double solve() { return 0; }
 };
 
-Solver* solvers[] = { new DummySolver(), NULL };
+class DFSSolver: public Solver {
+	public:
+		virtual string getName() const { return "DFS"; }
+
+		double dfs(int here, bitset<MAX_N>& visited) {
+			if(visited.count() == n) return 0;
+			double ret = 1e200;
+			for(int there = 0; there < n; ++there) {
+				if(visited[there]) continue;
+				visited[there].flip();
+				ret = min(ret, dist[here][there] + dfs(there, visited));
+				visited[there].flip();
+			}
+			return ret;
+		}
+
+		virtual double solve() {
+			bitset<MAX_N> visited;
+
+			double ret = 1e200;
+			for(int start = 0; start < n; ++start) {
+				visited.flip(start);
+				ret = min(ret, dfs(start, visited));
+				visited.flip(start);
+			}
+			return ret;
+		}
+};
+
+Solver* solvers[] = { new DummySolver(), new DFSSolver(), NULL };
 
 void solve(const char* algorithm, const char* fileName) {
 	ofstream outp(fileName);
