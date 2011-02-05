@@ -521,17 +521,34 @@ void setupSolvers() {
 		for(int checker = 0; checker < c; ++checker) {
 			string base2 = base + checkerNames[checker] + ":";
 			for(int estimatorSet = 0; estimatorSet < (1<<p); ++estimatorSet) {
-				string name = base2;
-				DFSSolver* solver = new DFSSolver();
-				solver->setOrderSelector(selectors[selector]);
-				solver->setFinishChecker(checkers[checker]);
-				for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
-					if(name[name.size()-1] != ':')
-						name += ',';
-					name += estimatorNames[i];
-					solver->addEstimator(estimators[i]);
+				{
+					/* Setup DFSSolver */
+					string name = base2;
+					DFSSolver* solver = new DFSSolver();
+					solver->setOrderSelector(selectors[selector]);
+					solver->setFinishChecker(checkers[checker]);
+					for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
+						if(name[name.size()-1] != ':')
+							name += ',';
+						name += estimatorNames[i];
+						solver->addEstimator(estimators[i]);
+					}
+					solvers["DFS" + name] = solver;
 				}
-				solvers["DFS:" + name] = solver;
+				{
+					/* Setup IDA*Solver */
+					string name = base2;
+					IDAStarSolver* solver = new IDAStarSolver();
+					solver->setOrderSelector(selectors[selector]);
+					solver->setFinishChecker(checkers[checker]);
+					for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
+						if(name[name.size()-1] != ':')
+							name += ',';
+						name += estimatorNames[i];
+						solver->addEstimator(estimators[i]);
+					}
+					solvers["IDA" + name] = solver;
+				}
 			}
 		}
 	}
