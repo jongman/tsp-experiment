@@ -79,31 +79,17 @@ class FinishChecker {
 		}
 };
 
-class DFSSolver: public Solver {
+class BaseSolver: public Solver {
 	public:
-
-		double minLength;
 		vector<vector<int> > order;
-
 		vector<Estimator*> estimators;
-		vector<Pruner*> pruners;
 		OrderSelector* orderSelector;
-		FinishChecker* finishChecker;
-
 		virtual void init() {
-			for(int i = 0; i < pruners.size(); ++i)
-				pruners[i]->init();
-
 			for(int i = 0; i < estimators.size(); ++i)
 				estimators[i]->init();
 
 			if(!orderSelector)
 				orderSelector = new OrderSelector();
-
-			if(!finishChecker)
-				finishChecker = new FinishChecker();
-            finishChecker->init();
-
 			order = orderSelector->getOrder();
 		}
 
@@ -111,16 +97,35 @@ class DFSSolver: public Solver {
 			orderSelector = selector;
 		}
 
-		void setFinishChecker(FinishChecker* checker) {
-			finishChecker = checker;
+		void addEstimator(Estimator* estimator) {
+			estimators.push_back(estimator);
+		}
+
+};
+
+class DFSSolver: public BaseSolver {
+	public:
+
+		double minLength;
+		vector<Pruner*> pruners;
+		FinishChecker* finishChecker;
+
+		virtual void init() {
+			BaseSolver::init();
+			for(int i = 0; i < pruners.size(); ++i)
+				pruners[i]->init();
+
+			if(!finishChecker)
+				finishChecker = new FinishChecker();
+            finishChecker->init();
 		}
 
 		void addPruner(Pruner* pruner) {
 			pruners.push_back(pruner);
 		}
 
-		void addEstimator(Estimator* estimator) {
-			estimators.push_back(estimator);
+		void setFinishChecker(FinishChecker* checker) {
+			finishChecker = checker;
 		}
 
 		bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
