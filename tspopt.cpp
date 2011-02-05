@@ -53,10 +53,18 @@ class DFSSolver: public Solver {
 		double minLength;
 		vector<int> minPath;
 		vector<Pruner*> pruners;
+		vector<pair<double,int> > order[MAX_N];
 
 		virtual void init() {
 			for(int i = 0; i < pruners.size(); ++i)
 				pruners[i]->init();
+			for(int i = 0; i < n; i++) {
+				order[i].clear();
+				for(int j = 0; j < n; j++)
+					if(i != j)
+						order[i].push_back((make_pair(dist[i][j], j)));
+				sort(order[i].begin(), order[i].end());
+			}
 		}
 
 		void addPruner(Pruner* pruner) {
@@ -81,7 +89,8 @@ class DFSSolver: public Solver {
 			}
 
 			int here = path.back();
-			for(int next = 0; next < n; ++next) {
+			for(int i = 0; i < n-1; ++i) {
+				int next = order[here][i].second;
 				if(visited[next]) continue;
 
 				visited[next].flip();
