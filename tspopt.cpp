@@ -47,24 +47,39 @@ class Pruner {
 		}
 };
 
+class OrderSelector {
+	public:
+		virtual vector<vector<int> > getOrder() {
+			vector<vector<int> > ret(n);
+			for(int i = 0; i < n; i++)
+				for(int j = 0; j < n; j++)
+					if(i != j)
+						ret[i].push_back(j);
+			return ret;
+		}
+};
+
 class DFSSolver: public Solver {
 	public:
 
 		double minLength;
 		vector<int> minPath;
+		vector<vector<int> > order;
+
 		vector<Pruner*> pruners;
-		vector<pair<double,int> > order[MAX_N];
+		OrderSelector* orderSelector;
 
 		virtual void init() {
 			for(int i = 0; i < pruners.size(); ++i)
 				pruners[i]->init();
-			for(int i = 0; i < n; i++) {
-				order[i].clear();
-				for(int j = 0; j < n; j++)
-					if(i != j)
-						order[i].push_back((make_pair(dist[i][j], j)));
-				sort(order[i].begin(), order[i].end());
-			}
+			if(!orderSelector)
+				orderSelector = new OrderSelector();
+
+			order = orderSelector->getOrder();
+		}
+
+		void setOrderSelector(OrderSelector* selector) {
+			orderSelector = selector;
 		}
 
 		void addPruner(Pruner* pruner) {
@@ -89,8 +104,8 @@ class DFSSolver: public Solver {
 			}
 
 			int here = path.back();
-			for(int i = 0; i < n-1; ++i) {
-				int next = order[here][i].second;
+			for(int i = 0; i < order[here].size(); ++i) {
+				int next = order[here][i];
 				if(visited[next]) continue;
 
 				visited[next].flip();
@@ -118,6 +133,23 @@ class DFSSolver: public Solver {
 				visited.flip(start);
 			}
 			return minLength;
+		}
+};
+
+class NearestNeighborOrderSelector : public OrderSelector {
+	public:
+		virtual vector<vector<int> > getOrder() {
+			vector<vector<int> > ret(n);
+			for(int i = 0; i < n; i++) {
+				vector<pair<double,int> > ord;
+				for(int j = 0; j < n; j++)
+					if(i != j)
+						ord.push_back(make_pair(dist[i][j], j));
+				sort(ord.begin(), ord.end());
+				for(int j = 0; j < ord.size(); j++)
+					ret[i].push_back(ord[j].second);
+			}
+			return ret;
 		}
 };
 
@@ -232,6 +264,7 @@ class MSTPruner: public Pruner {
 
 		double getLowerBound(int here, const bitset<MAX_N>& visited) {
 			UnionFind* uf = new UnionFind(n);
+			double taken = 0;
 			vector<vector<int> > adj(n);
 			for(int i = 0; i < edges.size(); i++) {
 				int a = edges[i].second.first, b = edges[i].second.second;
@@ -239,17 +272,21 @@ class MSTPruner: public Pruner {
 				if(b != here && visited[b]) continue;
 				a = uf->find(a); b = uf->find(b);
 				if(a != b) {
+					taken += edges[i].first;
 					adj[a].push_back(b);
 					adj[b].push_back(a);
 					uf->join(a, b);
 				}
 			}
 			delete uf;
+			return taken;
+			/*
 			last = -1;
 			length = 0;
 			bitset<MAX_N> seen;
 			dfs(here, adj, seen);
 			return length / 2.0;
+			*/
 		}
 
 		virtual bool prune(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
@@ -262,32 +299,49 @@ map<string, Solver*> solvers;
 void setupSolvers() {
 	solvers["Dummy"] = new DummySolver();
 
-	vector<string> names;
+	vector<string> selectorNames;
+	vector<OrderSelector*> selectors;
+
+	selectorNames.push_back("Default");
+	selectors.push_back(new OrderSelector());
+
+	selectorNames.push_back("Nearest");
+	selectors.push_back(new NearestNeighborOrderSelector());
+
+	vector<string> prunerNames;
 	vector<Pruner*> pruners;
 
-	names.push_back("Naive");
+	prunerNames.push_back("Naive");
 	pruners.push_back(new NaivePruner());
 
-	//names.push_back("Path");
+	//prunerNames.push_back("Path");
 	//pruners.push_back(new PathSwapPruner());
 
-	//names.push_back("PathRev");
+	//prunerNames.push_back("PathRev");
 	//pruners.push_back(new PathReversePruner());
 
-	names.push_back("LowerBound");
+	prunerNames.push_back("LowerBound");
 	pruners.push_back(new LowerBoundPruner());
 
-	names.push_back("MST");
+	prunerNames.push_back("MST");
 	pruners.push_back(new MSTPruner());
 
-
-	int m = pruners.size();
-	for(int i = 0; i < (1<<m); ++i) {
-		string name = "DFS";
-		for(int j = 0; j < m; j++) if(i & (1<<j)) name += names[j];
-		DFSSolver* solver = new DFSSolver();
-		for(int j = 0; j < m; j++) if(i & (1<<j)) solver->addPruner(pruners[j]);
-		solvers[name] = solver;
+	int s = selectors.size();
+	int p = pruners.size();
+	for(int selector = 0; selector < s; ++selector) {
+		string base = "DFS:" + selectorNames[selector] + ":";
+		for(int prunerSet = 0; prunerSet < (1<<p); ++prunerSet) {
+			string name = base;
+			DFSSolver* solver = new DFSSolver();
+			solver->setOrderSelector(selectors[selector]);
+			for(int i = 0; i < p; i++) if(prunerSet & (1<<i)) {
+				if(name[name.size()-1] != ':')
+					name += ',';
+				name += prunerNames[i];
+				solver->addPruner(pruners[i]);
+			}
+			solvers[name] = solver;
+		}
 	}
 }
 
