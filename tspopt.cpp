@@ -118,7 +118,7 @@ class DFSSolver: public Solver {
 			if(prune(path, visited, length)) return;
 			pair<bool, double> isFinished = finishChecker->isFinished(*this, path, visited, length);
 			if(isFinished.first) {
-				minLength = min(minLength, length);
+				minLength = min(minLength, isFinished.second);
 				return;
 			}
 
@@ -179,7 +179,7 @@ class MemoizingFinishChecker : public FinishChecker {
 			int stateCount = n;
 
 			// determine depth of cache
-			while(cacheDepth < n) {
+			while(cacheDepth < n-1) {
 				int newStates = bino[n][cacheDepth+1] * n;
 				if(stateCount + newStates > stateLimit) break;
 				stateCount += newStates;
@@ -245,8 +245,7 @@ class MemoizingFinishChecker : public FinishChecker {
 		double solve(int here, const vector<int>& toVisit) {
 			if(toVisit.empty()) return 0;
 			int idx = calcIndex(toVisit);
-			assert(0 <= idx && idx < cache[here][toVisit.size()].size());
-			double& ret = cache[here][toVisit.size()][calcIndex(toVisit)];
+			double& ret = cache[here][toVisit.size()][idx];
 			if(ret >= 0) return ret;
 			ret = 1e200;
 			for(int i = 0; i < toVisit.size(); ++i) {
@@ -259,7 +258,7 @@ class MemoizingFinishChecker : public FinishChecker {
 			for(int i = 0; i < toVisit.size(); i++) {
 				printf("%s%d", (i ? "," : ""), toVisit[i]);
 			}
-			printf("= %g\n", ret);
+			printf(") = %g\n", ret);
 			*/
 			return ret;
 		}
