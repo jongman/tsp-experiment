@@ -166,6 +166,62 @@ class DFSSolver: public BaseSolver {
 		}
 };
 
+class IDAStarSolver: public BaseSolver {
+	public:
+		double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			double ret = 0;
+			for(int i = 0; i < estimators.size(); ++i)
+				ret = max(ret, estimators[i]->estimate(path, visited, length));
+			return ret;
+		}
+
+		pair<double,double> dfs(vector<int>& path, bitset<MAX_N>& visited, double pathLimit, double length) {
+			double lowerBound = estimate(path, visited, length);
+			if(lowerBound >= pathLimit) return make_pair(INFINITY, lowerBound);
+			if(path.size() == n) return make_pair(length, pathLimit);
+
+			double best = INFINITY, nextPathLimit = INFINITY;
+			int here = path.back();
+			for(int i = 0; i < order[here].size(); ++i) {
+				int next = order[here][i];
+				if(visited[next]) continue;
+
+				visited[next].flip();
+				path.push_back(next);
+
+				pair<double,double> cand = dfs(path, visited, pathLimit, length + dist[here][next]);
+				best = min(best, cand.first);
+				nextPathLimit = min(nextPathLimit, cand.second);
+
+				path.pop_back();
+				visited[next].flip();
+			}
+			return make_pair(best, nextPathLimit);
+		}
+
+		virtual double solve() {
+			bitset<MAX_N> visited;
+
+			vector<int> path;
+			path.reserve(n);
+
+			double pathLimit = 0;
+			while(true) {
+				double best = INFINITY, nextPathLimit = INFINITY;
+				for(int start = 0; start < n; start++) {
+					visited.flip(start);
+					path.push_back(start);
+
+					pair<double,double> cand = dfs(path, visited, pathLimit, 0.0);
+					if(!isinf(cand.first)) return cand.first;
+					pathLimit = cand.second;
+					path.pop_back();
+					visited.flip(start);
+				}
+			}
+		}
+};
+
 class MemoizingFinishChecker : public FinishChecker {
 	public:
 		int bino[MAX_N][MAX_N];
