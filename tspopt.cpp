@@ -457,8 +457,14 @@ void setupSolvers() {
 	checkerNames.push_back("Default");
 	checkers.push_back(new FinishChecker());
 
-	checkerNames.push_back("Memoization");
+	checkerNames.push_back("Memoization1");
 	checkers.push_back(new MemoizingFinishChecker(200000));
+	checkerNames.push_back("Memoization2");
+	checkers.push_back(new MemoizingFinishChecker(500000));
+	checkerNames.push_back("Memoization3");
+	checkers.push_back(new MemoizingFinishChecker(1000000));
+	checkerNames.push_back("Memoization4");
+	checkers.push_back(new MemoizingFinishChecker(2000000));
 
 	// SETUP PRUNERS
 	vector<string> prunerNames;
