@@ -1,3 +1,4 @@
+#include<cassert>
 #include<algorithm>
 #include<map>
 #include<bitset>
@@ -117,7 +118,7 @@ class DFSSolver: public Solver {
 			if(prune(path, visited, length)) return;
 			pair<bool, double> isFinished = finishChecker->isFinished(*this, path, visited, length);
 			if(isFinished.first) {
-				minLength = length;
+				minLength = min(minLength, length);
 				return;
 			}
 
@@ -161,7 +162,6 @@ class MemoizingFinishChecker : public FinishChecker {
 		vector<vector<double> > cache[MAX_N];
 
 		MemoizingFinishChecker(int stateLimit) : stateLimit(stateLimit) {
-			calcBino();
 		}
 
 		void calcBino() {
@@ -169,7 +169,7 @@ class MemoizingFinishChecker : public FinishChecker {
 			for(int i = 0; i < MAX_N; ++i) {
 				bino[i][0] = 1;
 				for(int j = 1; j < i+1; j++) {
-					bino[i][j] = min(INT_MAX/2, bino[i-1][j-1] + bino[i-1][j]);
+					bino[i][j] = min(stateLimit/n+1, bino[i-1][j-1] + bino[i-1][j]);
 				}
 			}
 		}
@@ -179,12 +179,13 @@ class MemoizingFinishChecker : public FinishChecker {
 			int stateCount = n;
 
 			// determine depth of cache
-			while(true) {
+			while(cacheDepth < n) {
 				int newStates = bino[n][cacheDepth+1] * n;
 				if(stateCount + newStates > stateLimit) break;
 				stateCount += newStates;
 				++cacheDepth;
 			}
+		    //fprintf(stderr, "Determined a cache depth of %d StateCount = %d\n", cacheDepth, stateCount);
 		}
 
 		int calcIndex(const vector<int>& selected) {
@@ -194,8 +195,43 @@ class MemoizingFinishChecker : public FinishChecker {
 			return ret;
 		}
 
+		void test() {
+			for(int levels = 1; levels <= cacheDepth; ++levels) {
+				map<int,int> seen;
+				for(int mask = (1LL<<n)-1; mask >= 0; --mask) {
+					if(__builtin_popcount(mask) == levels) {
+						vector<int> selected;
+						for(int i = 0; i < n; i++) {
+							if(mask & (1LL<<i))
+								selected.push_back(i);
+						}
+						printf("level = %d mask = %d selected =", levels, mask);
+						for(int i = 0; i < selected.size(); i++) {
+							printf(" %d", selected[i]);
+						}
+						int got = calcIndex(selected);
+						printf(" got = %d\n", got);
+						if(got < 0 || got >= bino[n][levels]) {
+							printf("OVERFLOW!!\n");
+							printf("bino[%d][%d] = %d, got = %d\n", n, levels, bino[n][levels], got);
+							throw 1;
+						}
+						if(seen.count(got)) {
+							printf("CLASH!!!\n");
+							printf("Seen[%d] is already taken by mask=%d\n", got, seen[got]);
+							throw 1;
+						}
+						seen[got] = mask;
+					}
+				}
+			}
+		}
+
 		virtual void init() {
+			calcBino();
 			determineCacheDepth();
+
+			//test();
 
 			for(int i = 0; i < n; i++) {
 				cache[i].clear();
@@ -206,21 +242,30 @@ class MemoizingFinishChecker : public FinishChecker {
 			}
 		}
 
-		double solve(int here, vector<int> toVisit) {
+		double solve(int here, const vector<int>& toVisit) {
 			if(toVisit.empty()) return 0;
+			int idx = calcIndex(toVisit);
+			assert(0 <= idx && idx < cache[here][toVisit.size()].size());
 			double& ret = cache[here][toVisit.size()][calcIndex(toVisit)];
 			if(ret >= 0) return ret;
 			ret = 1e200;
 			for(int i = 0; i < toVisit.size(); ++i) {
 				vector<int> toVisit2 = toVisit;
 				toVisit2.erase(toVisit2.begin() + i);
-
 				ret = min(ret, dist[here][toVisit[i]] + solve(toVisit[i], toVisit2));
 			}
+			/*
+			printf("solve(here=%d, toVisit=", here);
+			for(int i = 0; i < toVisit.size(); i++) {
+				printf("%s%d", (i ? "," : ""), toVisit[i]);
+			}
+			printf("= %g\n", ret);
+			*/
 			return ret;
 		}
 
 		virtual pair<bool,double> isFinished(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			if(n == path.size()) return make_pair(true, length);
 			if(n - path.size() == cacheDepth) {
 				vector<int> toVisit;
 				for(int i = 0; i < n; i++)
