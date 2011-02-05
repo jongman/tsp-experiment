@@ -53,7 +53,7 @@ class Pruner {
 class Estimator {
 	public:
 		virtual void init() {}
-		virtual double estimate(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 			return 0;
 		}
 };
@@ -73,7 +73,7 @@ class OrderSelector {
 class FinishChecker {
 	public:
 		virtual void init() {}
-		virtual pair<bool,double> isFinished(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		virtual pair<bool,double> isFinished(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 			if(path.size() == n) return make_pair(true, length);
 			return make_pair(false, length);
 		}
@@ -93,6 +93,9 @@ class DFSSolver: public Solver {
 		virtual void init() {
 			for(int i = 0; i < pruners.size(); ++i)
 				pruners[i]->init();
+
+			for(int i = 0; i < estimators.size(); ++i)
+				estimators[i]->init();
 
 			if(!orderSelector)
 				orderSelector = new OrderSelector();
@@ -122,7 +125,7 @@ class DFSSolver: public Solver {
 
 		bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 			for(int i = 0; i < estimators.size(); i++)
-				if(estimators[i]->estimate(*this, path, visited, length) >= minLength)
+				if(estimators[i]->estimate(path, visited, length) >= minLength)
 					return true;
 			for(int i = 0; i < pruners.size(); i++)
 				if(pruners[i]->prune(path, visited, length))
@@ -132,7 +135,7 @@ class DFSSolver: public Solver {
 
 		void dfs(vector<int>& path, bitset<MAX_N>& visited, double length) {
 			if(prune(path, visited, length)) return;
-			pair<bool, double> isFinished = finishChecker->isFinished(*this, path, visited, length);
+			pair<bool, double> isFinished = finishChecker->isFinished(path, visited, length);
 			if(isFinished.first) {
 				minLength = min(minLength, isFinished.second);
 				return;
@@ -279,7 +282,7 @@ class MemoizingFinishChecker : public FinishChecker {
 			return ret;
 		}
 
-		virtual pair<bool,double> isFinished(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		virtual pair<bool,double> isFinished(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 			if(n == path.size()) return make_pair(true, length);
 			if(n - path.size() == cacheDepth) {
 				vector<int> toVisit;
