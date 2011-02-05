@@ -126,7 +126,21 @@ class PathSwapPruner : public Pruner {
 			const int b = path[path.size()-3];
 			const int c = path[path.size()-2];
 			const int d = path[path.size()-1];
-			return dist[a][b] + dist[c][d] > dist[a][c] + dist[b][d];
+			if(dist[a][b] + dist[c][d] > dist[a][c] + dist[b][d]) return true;
+		}
+};
+
+class PathReversePruner: public Pruner {
+	public:
+		virtual bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			if(path.size() < 3) return false;
+			int c = path[path.size()-2];
+			int d = path.back();
+			for(int i = 0; i+2 < path.size(); ++i) {
+				int a = path[i], b = path[i+1];
+				if(dist[a][c] + dist[b][d] < dist[a][b] + dist[c][d]) return true;
+			}
+			return false;
 		}
 };
 
@@ -164,8 +178,11 @@ void setupSolvers() {
 	names.push_back("Naive");
 	pruners.push_back(new NaivePruner());
 
-	names.push_back("Path");
-	pruners.push_back(new PathSwapPruner());
+	//names.push_back("Path");
+	//pruners.push_back(new PathSwapPruner());
+
+	names.push_back("PathRev");
+	pruners.push_back(new PathReversePruner());
 
 	names.push_back("LowerBound");
 	pruners.push_back(new LowerBoundPruner());
