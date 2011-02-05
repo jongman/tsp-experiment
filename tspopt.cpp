@@ -84,6 +84,7 @@ class BaseSolver: public Solver {
 		vector<vector<int> > order;
 		vector<Estimator*> estimators;
 		OrderSelector* orderSelector;
+		FinishChecker* finishChecker;
 		virtual void init() {
 			for(int i = 0; i < estimators.size(); ++i)
 				estimators[i]->init();
@@ -91,6 +92,10 @@ class BaseSolver: public Solver {
 			if(!orderSelector)
 				orderSelector = new OrderSelector();
 			order = orderSelector->getOrder();
+
+			if(!finishChecker)
+				finishChecker = new FinishChecker();
+            finishChecker->init();
 		}
 
 		void setOrderSelector(OrderSelector* selector) {
@@ -101,39 +106,21 @@ class BaseSolver: public Solver {
 			estimators.push_back(estimator);
 		}
 
+		void setFinishChecker(FinishChecker* checker) {
+			finishChecker = checker;
+		}
+
+
 };
 
 class DFSSolver: public BaseSolver {
 	public:
 
 		double minLength;
-		vector<Pruner*> pruners;
-		FinishChecker* finishChecker;
-
-		virtual void init() {
-			BaseSolver::init();
-			for(int i = 0; i < pruners.size(); ++i)
-				pruners[i]->init();
-
-			if(!finishChecker)
-				finishChecker = new FinishChecker();
-            finishChecker->init();
-		}
-
-		void addPruner(Pruner* pruner) {
-			pruners.push_back(pruner);
-		}
-
-		void setFinishChecker(FinishChecker* checker) {
-			finishChecker = checker;
-		}
 
 		bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 			for(int i = 0; i < estimators.size(); i++)
 				if(estimators[i]->estimate(path, visited, length) >= minLength)
-					return true;
-			for(int i = 0; i < pruners.size(); i++)
-				if(pruners[i]->prune(path, visited, length))
 					return true;
 			return false;
 		}
