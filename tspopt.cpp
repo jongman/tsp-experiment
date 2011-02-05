@@ -45,8 +45,16 @@ class DFSSolver;
 class Pruner {
 	public:
 		virtual void init() {}
-		virtual bool prune(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		virtual bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 			return false;
+		}
+};
+
+class Estimator {
+	public:
+		virtual void init() {}
+		virtual double estimate(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			return 0;
 		}
 };
 
@@ -77,6 +85,7 @@ class DFSSolver: public Solver {
 		double minLength;
 		vector<vector<int> > order;
 
+		vector<Estimator*> estimators;
 		vector<Pruner*> pruners;
 		OrderSelector* orderSelector;
 		FinishChecker* finishChecker;
@@ -107,9 +116,16 @@ class DFSSolver: public Solver {
 			pruners.push_back(pruner);
 		}
 
+		void addEstimator(Estimator* estimator) {
+			estimators.push_back(estimator);
+		}
+
 		bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			for(int i = 0; i < estimators.size(); i++)
+				if(estimators[i]->estimate(*this, path, visited, length) >= minLength)
+					return true;
 			for(int i = 0; i < pruners.size(); i++)
-				if(pruners[i]->prune(*this, path, visited, length))
+				if(pruners[i]->prune(path, visited, length))
 					return true;
 			return false;
 		}
@@ -293,13 +309,6 @@ class NearestNeighborOrderSelector : public OrderSelector {
 		}
 };
 
-class NaivePruner : public Pruner {
-	public:
-		virtual bool prune(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-			return length >= solver.minLength;
-		}
-};
-
 class PathSwapPruner : public Pruner {
 	public:
 		virtual bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
@@ -326,7 +335,14 @@ class PathReversePruner: public Pruner {
 		}
 };
 
-class LowerBoundPruner : public Pruner {
+class NaiveEstimator : public Estimator {
+	public:
+		virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			return length;
+		}
+};
+
+class IncomingEdgeEstimator : public Estimator {
 	public:
 		vector<double> minEdge;
 		virtual void init() {
@@ -339,13 +355,12 @@ class LowerBoundPruner : public Pruner {
 			}
 		}
 
-		virtual bool prune(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 			double lowerBound = length;
 			for(int i = 0; i < n; ++i)
 				if(!visited[i])
 					lowerBound += minEdge[i];
-
-			return lowerBound >= solver.minLength;
+			return lowerBound;
 		}
 };
 
@@ -372,7 +387,7 @@ struct UnionFind
     }
 };
 
-class MSTPruner: public Pruner {
+class MSTEstimator: public Estimator {
 	public:
 		vector<pair<double,pair<int,int> > > edges;
 
@@ -381,25 +396,6 @@ class MSTPruner: public Pruner {
 				for(int j = i+1; j < n; j++)
 					edges.push_back(make_pair(dist[i][j], make_pair(i, j)));
 			sort(edges.begin(), edges.end());
-		}
-
-		int last;
-		double length;
-
-		void visit(int here) {
-			if(last != -1)
-				length += dist[last][here];
-			last = here;
-		}
-
-		void dfs(int here, const vector<vector<int> >& adj, bitset<MAX_N>& seen) {
-			visit(here);
-			seen.flip(here);
-			for(int i = 0; i < adj[here].size(); i++) {
-				int there = adj[here][i];
-				if(!seen[there])
-					dfs(there, adj, seen);
-			}
 		}
 
 		double getLowerBound(int here, const bitset<MAX_N>& visited) {
@@ -420,17 +416,10 @@ class MSTPruner: public Pruner {
 			}
 			delete uf;
 			return taken;
-			/*
-			last = -1;
-			length = 0;
-			bitset<MAX_N> seen;
-			dfs(here, adj, seen);
-			return length / 2.0;
-			*/
 		}
 
-		virtual bool prune(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-			return length + getLowerBound(path.back(), visited) >= solver.minLength;
+		virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			return length + getLowerBound(path.back(), visited);
 		}
 };
 
@@ -457,51 +446,39 @@ void setupSolvers() {
 	checkerNames.push_back("Default");
 	checkers.push_back(new FinishChecker());
 
-	checkerNames.push_back("Memoization1");
-	checkers.push_back(new MemoizingFinishChecker(200000));
-	checkerNames.push_back("Memoization2");
+	checkerNames.push_back("Memoization");
 	checkers.push_back(new MemoizingFinishChecker(500000));
-	checkerNames.push_back("Memoization3");
-	checkers.push_back(new MemoizingFinishChecker(1000000));
-	checkerNames.push_back("Memoization4");
-	checkers.push_back(new MemoizingFinishChecker(2000000));
 
-	// SETUP PRUNERS
-	vector<string> prunerNames;
-	vector<Pruner*> pruners;
+	// SETUP ESTIMATORS
+	vector<string> estimatorNames;
+	vector<Estimator*> estimators;
 
-	prunerNames.push_back("Naive");
-	pruners.push_back(new NaivePruner());
+	estimatorNames.push_back("Naive");
+	estimators.push_back(new NaiveEstimator());
 
-	//prunerNames.push_back("Path");
-	//pruners.push_back(new PathSwapPruner());
+	estimatorNames.push_back("IncomingEdge");
+	estimators.push_back(new IncomingEdgeEstimator());
 
-	//prunerNames.push_back("PathRev");
-	//pruners.push_back(new PathReversePruner());
-
-	prunerNames.push_back("LowerBound");
-	pruners.push_back(new LowerBoundPruner());
-
-	prunerNames.push_back("MST");
-	pruners.push_back(new MSTPruner());
+	estimatorNames.push_back("MST");
+	estimators.push_back(new MSTEstimator());
 
 	int s = selectors.size();
 	int c = checkers.size();
-	int p = pruners.size();
+	int p = estimators.size();
 	for(int selector = 0; selector < s; ++selector) {
 		string base = "DFS:" + selectorNames[selector] + ":";
 		for(int checker = 0; checker < c; ++checker) {
 			string base2 = base + checkerNames[checker] + ":";
-			for(int prunerSet = 0; prunerSet < (1<<p); ++prunerSet) {
+			for(int estimatorSet = 0; estimatorSet < (1<<p); ++estimatorSet) {
 				string name = base2;
 				DFSSolver* solver = new DFSSolver();
 				solver->setOrderSelector(selectors[selector]);
 				solver->setFinishChecker(checkers[checker]);
-				for(int i = 0; i < p; i++) if(prunerSet & (1<<i)) {
+				for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
 					if(name[name.size()-1] != ':')
 						name += ',';
-					name += prunerNames[i];
-					solver->addPruner(pruners[i]);
+					name += estimatorNames[i];
+					solver->addEstimator(estimators[i]);
 				}
 				solvers[name] = solver;
 			}
