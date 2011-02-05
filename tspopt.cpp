@@ -1,3 +1,4 @@
+#include<algorithm>
 #include<map>
 #include<bitset>
 #include<cstring>
@@ -167,6 +168,86 @@ class LowerBoundPruner : public Pruner {
 		}
 };
 
+struct UnionFind
+{
+    int n, components;
+    vector<int> parent, rank;
+    UnionFind(int n) : n(n), components(n), parent(n), rank(n)
+    { for(int i = 0; i < n; ++i) { parent[i] = i; rank[i] = 0; } }
+    int find(int here) { return parent[here] == here ? here : (parent[here] = find(parent[here])); }
+    bool join(int a, int b)
+    {
+        a = find(a); b = find(b);
+        if(a == b) return false;
+        if(rank[a] > rank[b])
+            parent[b] = a;
+        else
+        {
+            parent[a] = b;
+            if(rank[a] == rank[b]) rank[b]++;
+        }
+        --components;
+        return true;
+    }
+};
+
+class MSTPruner: public Pruner {
+	public:
+		vector<pair<double,pair<int,int> > > edges;
+
+		virtual void init() {
+			for(int i = 0; i < n; ++i)
+				for(int j = i+1; j < n; j++)
+					edges.push_back(make_pair(dist[i][j], make_pair(i, j)));
+			sort(edges.begin(), edges.end());
+		}
+
+		int last;
+		double length;
+
+		void visit(int here) {
+			if(last != -1)
+				length += dist[last][here];
+			last = here;
+		}
+
+		void dfs(int here, const vector<vector<int> >& adj, bitset<MAX_N>& seen) {
+			visit(here);
+			seen.flip(here);
+			for(int i = 0; i < adj[here].size(); i++) {
+				int there = adj[here][i];
+				if(!seen[there])
+					dfs(there, adj, seen);
+			}
+		}
+
+		double getLowerBound(int here, const bitset<MAX_N>& visited) {
+			UnionFind* uf = new UnionFind(n);
+			vector<vector<int> > adj(n);
+			for(int i = 0; i < edges.size(); i++) {
+				int a = edges[i].second.first, b = edges[i].second.second;
+				if(a != here && visited[a]) continue;
+				if(b != here && visited[b]) continue;
+				a = uf->find(a); b = uf->find(b);
+				if(a != b) {
+					adj[a].push_back(b);
+					adj[b].push_back(a);
+					uf->join(a, b);
+				}
+			}
+			delete uf;
+			last = -1;
+			length = 0;
+			bitset<MAX_N> seen;
+			dfs(here, adj, seen);
+			return length / 2.0;
+		}
+
+		virtual bool prune(const DFSSolver& solver, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			return length + getLowerBound(path.back(), visited) >= solver.minLength;
+		}
+};
+
 map<string, Solver*> solvers;
 
 void setupSolvers() {
@@ -181,11 +262,15 @@ void setupSolvers() {
 	//names.push_back("Path");
 	//pruners.push_back(new PathSwapPruner());
 
-	names.push_back("PathRev");
-	pruners.push_back(new PathReversePruner());
+	//names.push_back("PathRev");
+	//pruners.push_back(new PathReversePruner());
 
 	names.push_back("LowerBound");
 	pruners.push_back(new LowerBoundPruner());
+
+	names.push_back("MST");
+	pruners.push_back(new MSTPruner());
+
 
 	int m = pruners.size();
 	for(int i = 0; i < (1<<m); ++i) {
