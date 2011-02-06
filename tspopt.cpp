@@ -166,6 +166,32 @@ class DFSSolver: public BaseSolver {
 		}
 };
 
+class IDSSolver: public DFSSolver {
+	public:
+
+		virtual double solve() {
+			bitset<MAX_N> visited;
+
+			vector<int> path;
+			path.reserve(n);
+
+			double initialGuess = 1;
+			//for(int i = 0; i < estimators.size(); ++i)
+			//	initialGuess = max(initialGuess, estimators[i]->estimate(path, visited, 0));
+			for(double guess = initialGuess; ; guess *= 2) {
+				minLength = guess;
+				for(int start = 0; start < n; ++start) {
+					visited.flip(start);
+					path.push_back(start);
+					dfs(path, visited, 0.0);
+					path.pop_back();
+					visited.flip(start);
+				}
+				if(minLength < guess) break;
+			}
+			return minLength;
+		}
+};
 class IDAStarSolver: public BaseSolver {
 	public:
 		double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
@@ -177,7 +203,7 @@ class IDAStarSolver: public BaseSolver {
 
 		pair<double,double> dfs(vector<int>& path, bitset<MAX_N>& visited, double pathLimit, double length) {
 			double lowerBound = estimate(path, visited, length);
-			if(lowerBound >= pathLimit) return make_pair(INFINITY, lowerBound);
+			if(lowerBound > pathLimit) return make_pair(INFINITY, lowerBound);
 			if(path.size() == n) return make_pair(length, pathLimit);
 
 			double best = INFINITY, nextPathLimit = INFINITY;
@@ -213,7 +239,7 @@ class IDAStarSolver: public BaseSolver {
 					path.push_back(start);
 
 					pair<double,double> cand = dfs(path, visited, pathLimit, 0.0);
-					if(!isinf(cand.first)) return cand.first;
+					if(cand.first < 1e200) return cand.first;
 					pathLimit = cand.second;
 					path.pop_back();
 					visited.flip(start);
@@ -470,7 +496,7 @@ class MSTEstimator: public Estimator {
 		}
 
 		virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-			return length + getLowerBound(path.back(), visited);
+			return length + getLowerBound(path.empty() ? -1 : path.back(), visited);
 		}
 };
 
@@ -536,9 +562,9 @@ void setupSolvers() {
 					solvers["DFS" + name] = solver;
 				}
 				{
-					/* Setup IDA*Solver */
+					/* Setup IDSSolver */
 					string name = base2;
-					IDAStarSolver* solver = new IDAStarSolver();
+					IDSSolver* solver = new IDSSolver();
 					solver->setOrderSelector(selectors[selector]);
 					solver->setFinishChecker(checkers[checker]);
 					for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
@@ -547,7 +573,7 @@ void setupSolvers() {
 						name += estimatorNames[i];
 						solver->addEstimator(estimators[i]);
 					}
-					solvers["IDA" + name] = solver;
+					solvers["IDS" + name] = solver;
 				}
 			}
 		}
