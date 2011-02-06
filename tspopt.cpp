@@ -60,13 +60,17 @@ class Estimator {
 
 class OrderSelector {
 	public:
-		virtual vector<vector<int> > getOrder() {
-			vector<vector<int> > ret(n);
+		vector<vector<int> > ret;
+		virtual void init() {
+			ret.clear();
+			ret.resize(n);
 			for(int i = 0; i < n; i++)
 				for(int j = 0; j < n; j++)
 					if(i != j)
 						ret[i].push_back(j);
-			return ret;
+		}
+		virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			return ret[path.back()];
 		}
 };
 
@@ -81,7 +85,6 @@ class FinishChecker {
 
 class BaseSolver: public Solver {
 	public:
-		vector<vector<int> > order;
 		vector<Estimator*> estimators;
 		OrderSelector* orderSelector;
 		FinishChecker* finishChecker;
@@ -91,7 +94,7 @@ class BaseSolver: public Solver {
 
 			if(!orderSelector)
 				orderSelector = new OrderSelector();
-			order = orderSelector->getOrder();
+			orderSelector->init();
 
 			if(!finishChecker)
 				finishChecker = new FinishChecker();
@@ -134,8 +137,9 @@ class DFSSolver: public BaseSolver {
 			}
 
 			int here = path.back();
-			for(int i = 0; i < order[here].size(); ++i) {
-				int next = order[here][i];
+			vector<int> order = orderSelector->getOrder(path, visited, length);
+			for(int i = 0; i < order.size(); ++i) {
+				int next = order[i];
 				if(visited[next]) continue;
 
 				visited[next].flip();
@@ -208,8 +212,10 @@ class IDAStarSolver: public BaseSolver {
 
 			double best = INFINITY, nextPathLimit = INFINITY;
 			int here = path.back();
-			for(int i = 0; i < order[here].size(); ++i) {
-				int next = order[here][i];
+
+			vector<int> order = orderSelector->getOrder(path, visited, length);
+			for(int i = 0; i < order.size(); ++i) {
+				int next = order[i];
 				if(visited[next]) continue;
 
 				visited[next].flip();
@@ -371,8 +377,9 @@ class MemoizingFinishChecker : public FinishChecker {
 
 class NearestNeighborOrderSelector : public OrderSelector {
 	public:
-		virtual vector<vector<int> > getOrder() {
-			vector<vector<int> > ret(n);
+		virtual void init() {
+			ret.clear();
+			ret.resize(n);
 			for(int i = 0; i < n; i++) {
 				vector<pair<double,int> > ord;
 				for(int j = 0; j < n; j++)
@@ -382,7 +389,9 @@ class NearestNeighborOrderSelector : public OrderSelector {
 				for(int j = 0; j < ord.size(); j++)
 					ret[i].push_back(ord[j].second);
 			}
-			return ret;
+		}
+		virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			return ret[path.back()];
 		}
 };
 
