@@ -28,7 +28,7 @@ def run_with_time_limit(command_line, time_limit):
 def test_with(args):
     make_output_directory(args)
     log_entry = {"algorithm": args.algorithm, "times": {}}
-    input_files = list(sorted(glob.glob("inputs/input??.txt")))
+    input_files = list(sorted(glob.glob("inputs/*.txt")))
     if args.n != None:
         input_files = input_files[:int(args.n)]
     for input_file in input_files:
@@ -42,8 +42,7 @@ def test_with(args):
             print "Time limit exceeded for %s." % input_file
         else:
             res = open(output_file).read().strip()
-            print "Solved %s within %g seconds. Result: %s" % (input_file,
-                    runtime, res)
+            print "Solved %s within %g seconds." % (input_file, runtime)
         log_entry["times"][input_file] = runtime
         if runtime == "TLE": break
     return log_entry

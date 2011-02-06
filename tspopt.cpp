@@ -18,8 +18,7 @@ const int MAX_N = 101;
 int n;
 double y[MAX_N], x[MAX_N], dist[MAX_N][MAX_N];
 
-void read(const char* fileName) {
-	ifstream inp(fileName);
+void read(istream& inp) {
 	inp >> n;
 	for(int i = 0; i < n; i++) inp >> y[i] >> x[i];
 	for(int i = 0; i < n; i++) {
@@ -630,15 +629,12 @@ void setupSolvers() {
 	}
 }
 
-void solve(const string& algorithm, const char* fileName) {
-	ofstream outp(fileName);
+double solve(const string& algorithm) {
 	if(solvers.count(algorithm) == 0)
-		outp << -1 << endl;
-	else {
-		Solver* s = solvers[algorithm];
-		s->init();
-		outp << s->solve() << endl;
-	}
+		return -1;
+	Solver* s = solvers[algorithm];
+	s->init();
+	return s->solve();
 }
 
 int main(int argc, char* argv[]) {
@@ -656,7 +652,13 @@ int main(int argc, char* argv[]) {
 		printf("\n");
 		return 0;
 	}
-	read(argv[2]);
-	solve(argv[1], argv[3]);
+	ifstream inp(argv[2]);
+	ofstream outp(argv[3]);
+	int cases;
+	inp >> cases;
+	for(int i = 0; i < cases; ++i) {
+		read(inp);
+		outp << solve(argv[1]) << endl;
+	}
 }
 
