@@ -69,7 +69,7 @@ class OrderSelector {
 					if(i != j)
 						ret[i].push_back(j);
 		}
-		virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
 			return ret[path.back()];
 		}
 };
@@ -137,7 +137,7 @@ class DFSSolver: public BaseSolver {
 			}
 
 			int here = path.back();
-			vector<int> order = orderSelector->getOrder(path, visited, length);
+			vector<int> order = orderSelector->getOrder(path, visited, length, minLength);
 			for(int i = 0; i < order.size(); ++i) {
 				int next = order[i];
 				if(visited[next]) continue;
@@ -213,7 +213,7 @@ class IDAStarSolver: public BaseSolver {
 			double best = INFINITY, nextPathLimit = INFINITY;
 			int here = path.back();
 
-			vector<int> order = orderSelector->getOrder(path, visited, length);
+			vector<int> order = orderSelector->getOrder(path, visited, length, pathLimit);
 			for(int i = 0; i < order.size(); ++i) {
 				int next = order[i];
 				if(visited[next]) continue;
@@ -390,7 +390,7 @@ class NearestNeighborOrderSelector : public OrderSelector {
 					ret[i].push_back(ord[j].second);
 			}
 		}
-		virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
 			return ret[path.back()];
 		}
 };
@@ -509,6 +509,41 @@ class MSTEstimator: public Estimator {
 		}
 };
 
+class EstimatingOrderSelector : public OrderSelector {
+	public:
+		Estimator *estimator;
+
+		EstimatingOrderSelector(Estimator* estimator) : estimator(estimator) {
+		}
+
+		virtual void init() {
+			estimator->init();
+		}
+
+		virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
+			vector<pair<double,int> > ord;
+			vector<int> newPath = path;
+			newPath.push_back(-1);
+			bitset<MAX_N> newVisited = visited;
+			for(int i = 0; i < n; i++) {
+				if(visited[i]) continue;
+				newPath.back() = i;
+				newVisited.flip(i);
+
+				ord.push_back(make_pair(estimator->estimate(newPath, newVisited, length + dist[path.back()][i]), i));
+
+				newVisited.flip(i);
+			}
+			sort(ord.begin(), ord.end());
+			vector<int> ret;
+			for(int i = 0; i < ord.size(); i++) {
+				if(ord[i].first < minLength)
+					ret.push_back(ord[i].second);
+			}
+			return ret;
+		}
+};
+
 map<string, Solver*> solvers;
 
 void setupSolvers() {
@@ -524,6 +559,12 @@ void setupSolvers() {
 
 	selectorNames.push_back("Nearest");
 	selectors.push_back(new NearestNeighborOrderSelector());
+
+	selectorNames.push_back("IncomingEdge");
+	selectors.push_back(new EstimatingOrderSelector( new IncomingEdgeEstimator()));
+
+	selectorNames.push_back("MST");
+	selectors.push_back(new EstimatingOrderSelector( new MSTEstimator()));
 
 	// SETUP FINISHCHECKERS
 	vector<string> checkerNames;
