@@ -27,6 +27,7 @@ def run_with_time_limit(command_line, time_limit):
 
 def test_with(executable, algo, time_limit, input_files):
     make_output_directory(algo)
+    print "Testing", algo
     entry = {}
     for input_file in input_files:
         output_file = get_output_path(algo, input_file)
