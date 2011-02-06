@@ -477,6 +477,7 @@ class MSTEstimator: public Estimator {
 		vector<pair<double,pair<int,int> > > edges;
 
 		virtual void init() {
+			edges.clear();
 			for(int i = 0; i < n; ++i)
 				for(int j = i+1; j < n; j++)
 					edges.push_back(make_pair(dist[i][j], make_pair(i, j)));

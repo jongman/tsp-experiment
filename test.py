@@ -3,14 +3,14 @@
 
 import argparse, subprocess, glob, os, time, json
 
-def make_output_directory(args):
+def make_output_directory(algo):
     try:
-        os.makedirs("outputs/%s" % args.algorithm.lower())
+        os.makedirs("outputs/%s" % algo.lower())
     except OSError:
         pass
 
-def get_output_path(args, input_file):
-    return "outputs/%s/%s" % (args.algorithm.lower(),
+def get_output_path(algo, input_file):
+    return "outputs/%s/%s" % (algo.lower(),
             os.path.basename(input_file).replace("inp", "outp"))
 
 def run_with_time_limit(command_line, time_limit):
@@ -25,43 +25,51 @@ def run_with_time_limit(command_line, time_limit):
         return None
     return now - start
 
-def test_with(args):
-    make_output_directory(args)
-    log_entry = {"algorithm": args.algorithm, "times": {}}
-    input_files = list(sorted(glob.glob("inputs/*.txt")))
-    if args.n != None:
-        input_files = input_files[:int(args.n)]
+def test_with(executable, algo, time_limit, input_files):
+    make_output_directory(algo)
+    entry = {}
     for input_file in input_files:
-        output_file = get_output_path(args, input_file)
-        runtime = run_with_time_limit(" ".join([args.executable,
-            args.algorithm,
+        output_file = get_output_path(algo, input_file)
+        runtime = run_with_time_limit(" ".join([executable,
+            algo,
             input_file, output_file]),
-            args.time_limit)
+            time_limit)
         if runtime == None:
             runtime = "TLE"
             print "Time limit exceeded for %s." % input_file
         else:
             res = open(output_file).read().strip()
             print "Solved %s within %g seconds." % (input_file, runtime)
-        log_entry["times"][input_file] = runtime
+        entry[input_file] = runtime
         if runtime == "TLE": break
-    return log_entry
+    return entry
 
-def leave_log(entry):
-    fp = open("tests.log", "a")
-    fp.write("%s\n" % json.dumps(entry))
-    fp.close()
+def print_report(input_files, algos, report):
+    max_len = max(map(len, algos))
+    disp = map(os.path.basename, input_files)
+    print "|".join([" "*max_len] + disp)
+    for algo in algos:
+        elems = [("%-" + str(max_len) + "s") % algo]
+        for input_file, displayed in zip(input_files, disp):
+            data = report[algo].get(input_file, "")
+            if isinstance(data, float):
+                data = "%.2lf" % data
+            elems.append(("%-" + str(len(disp)) + "s") % data)
+        print "|".join(elems)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("executable")
-    parser.add_argument("algorithm")
+    parser.add_argument("algorithm", nargs="+")
     parser.add_argument("-t", "--time-limit", default=10.0, type=float)
-    parser.add_argument("-n", default=None)
     args = parser.parse_args()
 
-    log_entry = test_with(args)
-    leave_log(log_entry)
+    log_entry = {}
+    input_files = list(sorted(glob.glob("inputs/*.txt")))
+    for algo in args.algorithm:
+        log_entry[algo] = test_with(args.executable, algo,
+            args.time_limit, input_files)
+    print_report(input_files, args.algorithm, log_entry)
 
 if __name__ == "__main__":
     main()
