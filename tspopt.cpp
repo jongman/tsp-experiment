@@ -277,7 +277,6 @@ class TwoOptimizer : public Optimizer {
 							//printf("went down by %g\n", delta);
 							curLength += delta;
 							improved = true;
-							return curLength;
 							reverse(path.begin() + i + 1, path.begin() + j + 1);
 							break;
 						}
