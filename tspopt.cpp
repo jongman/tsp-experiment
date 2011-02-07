@@ -118,6 +118,7 @@ class BaseSolver: public Solver {
 class DFSSolver: public BaseSolver {
 	public:
 
+		//int renewed;
 		double minLength;
 
 		bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
@@ -131,6 +132,7 @@ class DFSSolver: public BaseSolver {
 			if(prune(path, visited, length)) return;
 			pair<bool, double> isFinished = finishChecker->isFinished(path, visited, length);
 			if(isFinished.first) {
+				//++renewed;
 				minLength = min(minLength, isFinished.second);
 				return;
 			}
@@ -157,6 +159,7 @@ class DFSSolver: public BaseSolver {
 			vector<int> path;
 			path.reserve(n);
 
+			//renewed = 0;
 			minLength = 1e200;
 			for(int start = 0; start < n; ++start) {
 				visited.flip(start);
@@ -165,6 +168,7 @@ class DFSSolver: public BaseSolver {
 				path.pop_back();
 				visited.flip(start);
 			}
+			//fprintf(stderr, "Optimal solution was renewed %d times\n", renewed);
 			return minLength;
 		}
 };
@@ -251,6 +255,52 @@ class IDAStarSolver: public BaseSolver {
 				}
 			}
 		}
+};
+
+class OptimizingFinishChecker: public FinishChecker {
+	public:
+
+		virtual double optimize(vector<int> path, double curLength) = 0;
+		virtual pair<bool,double> isFinished(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			if(path.size() < n) return make_pair(false, length);
+			return make_pair(true, optimize(path, length));
+		}
+
+};
+class SwapFinishChecker: public OptimizingFinishChecker {
+	public:
+
+		virtual double optimize(vector<int> path, double curLength) {
+			//printf("Optimizing from %g ..\n", curLength);
+			while(true) {
+				bool improved = false;
+				for(int i = 0; i < path.size(); i++) {
+					for(int j = i+1; j < path.size(); j++) {
+						int A = path[i], B = path[j];
+						double delta = 0;
+						if(i > 0)
+							delta = delta - dist[path[i-1]][A] + dist[path[i-1]][B];
+						if(j + 1 < path.size())
+							delta = delta - dist[B][path[j+1]] + dist[A][path[j+1]];
+						if(i + 1 < j)
+							delta = delta - dist[A][path[i+1]] + dist[B][path[i+1]]
+								- dist[path[j-1]][B] + dist[path[j-1]][A];
+						if(delta < 0) {
+							//printf("went down by %g\n", delta);
+							curLength += delta;
+							improved = true;
+							swap(path[i], path[j]);
+							break;
+						}
+					}
+					if(improved) break;
+				}
+				if(!improved) break;
+			}
+			//printf("Resulted %g\n", curLength);
+			return curLength;
+		}
+
 };
 
 class MemoizingFinishChecker : public FinishChecker {
@@ -575,6 +625,9 @@ void setupSolvers() {
 
 	checkerNames.push_back("Memoization");
 	checkers.push_back(new MemoizingFinishChecker(500000));
+
+	checkerNames.push_back("SwapOpt");
+	checkers.push_back(new SwapFinishChecker());
 
 	// SETUP ESTIMATORS
 	vector<string> estimatorNames;
