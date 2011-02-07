@@ -118,7 +118,7 @@ class BaseSolver: public Solver {
 class DFSSolver: public BaseSolver {
 	public:
 
-		//int renewed;
+		int renewed;
 		double minLength;
 
 		bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
@@ -132,7 +132,7 @@ class DFSSolver: public BaseSolver {
 			if(prune(path, visited, length)) return;
 			pair<bool, double> isFinished = finishChecker->isFinished(path, visited, length);
 			if(isFinished.first) {
-				//++renewed;
+				++renewed;
 				minLength = min(minLength, isFinished.second);
 				return;
 			}
@@ -159,7 +159,7 @@ class DFSSolver: public BaseSolver {
 			vector<int> path;
 			path.reserve(n);
 
-			//renewed = 0;
+			renewed = 0;
 			minLength = 1e200;
 			for(int start = 0; start < n; ++start) {
 				visited.flip(start);
@@ -257,20 +257,44 @@ class IDAStarSolver: public BaseSolver {
 		}
 };
 
-class OptimizingFinishChecker: public FinishChecker {
+class Optimizer {
 	public:
+		virtual double optimize(vector<int>& path, double curLength) = 0;
+};
 
-		virtual double optimize(vector<int> path, double curLength) = 0;
-		virtual pair<bool,double> isFinished(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-			if(path.size() < n) return make_pair(false, length);
-			return make_pair(true, optimize(path, length));
+class TwoOptimizer : public Optimizer {
+	public:
+		virtual double optimize(vector<int>& path, double curLength) {
+			//printf("Optimizing from %g ..\n", curLength);
+			while(true) {
+				bool improved = false;
+				for(int i = 0; i < path.size(); i++) {
+					for(int j = i+2; j+1 < path.size(); j++) {
+						// (.. path[i]) + (path[j] .. path[i+1]) + (path[j+1] ..)
+						double delta = dist[path[i]][path[j]] + dist[path[i+1]][path[j+1]]
+							- dist[path[i]][path[i+1]] - dist[path[j]][path[j+1]];
+						if(delta < -1e-9) {
+							//printf("went down by %g\n", delta);
+							curLength += delta;
+							improved = true;
+							return curLength;
+							reverse(path.begin() + i + 1, path.begin() + j + 1);
+							break;
+						}
+					}
+					if(improved) break;
+				}
+				if(!improved) break;
+			}
+			//printf("Resulted %g\n", curLength);
+			return curLength;
 		}
 
 };
-class SwapFinishChecker: public OptimizingFinishChecker {
-	public:
 
-		virtual double optimize(vector<int> path, double curLength) {
+class SwapOptimizer: public Optimizer {
+	public:
+		virtual double optimize(vector<int>& path, double curLength) {
 			//printf("Optimizing from %g ..\n", curLength);
 			while(true) {
 				bool improved = false;
@@ -299,6 +323,27 @@ class SwapFinishChecker: public OptimizingFinishChecker {
 			}
 			//printf("Resulted %g\n", curLength);
 			return curLength;
+		}
+
+};
+
+class OptimizingFinishChecker: public FinishChecker {
+	public:
+
+		vector<Optimizer*> optimizers;
+
+		void addOptimizer(Optimizer* optimizer) {
+			optimizers.push_back(optimizer);
+		}
+
+		virtual pair<bool,double> isFinished(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+			if(path.size() < n) return make_pair(false, length);
+			vector<int> optimized = path;
+			for(int i = 0; i < optimizers.size(); i++) {
+				length = optimizers[i]->optimize(optimized, length);
+			}
+
+			return make_pair(true, length);
 		}
 
 };
@@ -626,8 +671,21 @@ void setupSolvers() {
 	checkerNames.push_back("Memoization");
 	checkers.push_back(new MemoizingFinishChecker(500000));
 
-	checkerNames.push_back("SwapOpt");
-	checkers.push_back(new SwapFinishChecker());
+	{
+		checkerNames.push_back("Optimizing1");
+		OptimizingFinishChecker* opt = new OptimizingFinishChecker();
+		opt->addOptimizer(new SwapOptimizer());
+		//opt->addOptimizer(new TwoOptimizer());
+		checkers.push_back(opt);
+	}
+
+	{
+		checkerNames.push_back("Optimizing2");
+		OptimizingFinishChecker* opt = new OptimizingFinishChecker();
+		opt->addOptimizer(new SwapOptimizer());
+		opt->addOptimizer(new TwoOptimizer());
+		checkers.push_back(opt);
+	}
 
 	// SETUP ESTIMATORS
 	vector<string> estimatorNames;
