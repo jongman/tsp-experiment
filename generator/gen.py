@@ -3,8 +3,8 @@
 
 from random import random
 
-Ns    = [8,  10, 12, 14, 16, 18, 20, 22]
-cases = [20, 20, 20, 20, 10, 10, 10, 10]
+Ns    = [8,  10, 12, 16, 20, 24, 28]
+cases = [20, 20, 20, 10, 10, 10, 5]
 for no, n, cc in zip(range(len(Ns)), Ns, cases):
     fp = open("input%.2d.txt" % n, "w")
     fp.write("%d\n" % cc)
