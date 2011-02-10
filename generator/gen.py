@@ -4,7 +4,7 @@
 from random import random
 
 names = ["small", "medium", "large"]
-Ns = [8, 16, 24]
+Ns = [10, 16, 24]
 cc = 20
 for no, n, name in zip(range(len(Ns)), Ns, names):
     fp = open("input%.2d%s.txt" % (n, name), "w")
