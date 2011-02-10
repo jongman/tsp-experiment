@@ -627,7 +627,7 @@ struct MSTEstimator: public Estimator {
 	}
 
 	// Kruskal's MST
-	double getLowerBound(const TSPState& state) {
+	virtual double estimate(const TSPState& state) {
 		int here = state.path.empty() ? -1 : state.path.back();
 		UnionFind* uf = new UnionFind(state.problem.n);
 		double taken = 0;
@@ -642,11 +642,7 @@ struct MSTEstimator: public Estimator {
 			}
 		}
 		delete uf;
-		return taken;
-	}
-
-	virtual double estimate(const TSPState& state) {
-		return state.length + getLowerBound(state);
+		return taken + state.length;
 	}
 };
 
@@ -712,7 +708,7 @@ void setupSolvers() {
 	checkers.push_back(new MemoizingFinishChecker(500000));
 
 	{
-		checkerNames.push_back("Optimizing1");
+		checkerNames.push_back("OptimizingSwap");
 		OptimizingFinishChecker* opt = new OptimizingFinishChecker();
 		opt->addOptimizer(new SwapOptimizer());
 		//opt->addOptimizer(new TwoOptimizer());
@@ -720,7 +716,14 @@ void setupSolvers() {
 	}
 
 	{
-		checkerNames.push_back("Optimizing2");
+		checkerNames.push_back("OptimizingTwo");
+		OptimizingFinishChecker* opt = new OptimizingFinishChecker();
+		opt->addOptimizer(new TwoOptimizer());
+		checkers.push_back(opt);
+	}
+
+	{
+		checkerNames.push_back("OptimizingSwapTwo");
 		OptimizingFinishChecker* opt = new OptimizingFinishChecker();
 		opt->addOptimizer(new SwapOptimizer());
 		opt->addOptimizer(new TwoOptimizer());
