@@ -15,13 +15,14 @@ def get_output_path(algo, input_file):
 
 def run_with_time_limit(command_line, time_limit):
     start = time.time()
-    process = subprocess.Popen(command_line, shell=True)
+    process = subprocess.Popen(command_line)
     while True:
         now = time.time()
         if process.poll() != None or now > start + time_limit: break
         time.sleep(0.01)
     if process.returncode == None:
         process.kill()
+        process.communicate()
         return None
     return now - start
 
@@ -31,9 +32,9 @@ def test_with(executable, algo, time_limit, input_files):
     entry = {}
     for input_file in input_files:
         output_file = get_output_path(algo, input_file)
-        runtime = run_with_time_limit(" ".join([executable,
+        runtime = run_with_time_limit([executable,
             algo,
-            input_file, output_file]),
+            input_file, output_file],
             time_limit)
         if runtime == None:
             runtime = "TLE"
