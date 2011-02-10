@@ -15,18 +15,6 @@ using namespace std;
 const int INT_MAX = numeric_limits<int>::max();
 const int MAX_N = 101;
 
-int n;
-double y[MAX_N], x[MAX_N], dist[MAX_N][MAX_N];
-
-void read(istream& inp) {
-	inp >> n;
-	for(int i = 0; i < n; i++) inp >> y[i] >> x[i];
-	for(int i = 0; i < n; i++) {
-		for(int j = 0; j < n; j++)
-			dist[i][j] = hypot(y[i] - y[j], x[i] - x[j]);
-		dist[n][i] = 0;
-	}
-}
 
 // 여행하는 외판원 문제의 입력을 정의한다
 struct TSPProblem {
@@ -34,20 +22,32 @@ struct TSPProblem {
 	double dist[MAX_N][MAX_N];
 };
 
+TSPProblem read(istream& inp) {
+	TSPProblem problem;
+	inp >> problem.n;
+	vector<double> y(problem.n), x(problem.n);
+	for(int i = 0; i < problem.n; i++)
+		inp >> y[i] >> x[i];
+	for(int i = 0; i < problem.n; i++) {
+		for(int j = 0; j < problem.n; j++)
+			problem.dist[i][j] = hypot(y[i] - y[j], x[i] - x[j]);
+	}
+	return problem;
+}
+
+
 // 현재 상태가 주어질 때 종료 상태까지 거리의 하한을 계산한다
 struct Estimator {
-	virtual void init() {
+	virtual void init(const TSPProblem& problem) {
 	}
-	virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		return 0;
-	}
+	virtual double estimate(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) = 0;
 };
 
 // 현재 상태가 주어질 때 더 탐색할 필요가 있는지 없는지를 반환한다
 struct Pruner {
-	virtual void init() {
+	virtual void init(const TSPProblem& problem) {
 	}
-	virtual bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+	virtual bool prune(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 		return false;
 	}
 };
@@ -57,24 +57,24 @@ struct Pruner {
 // 기본 구현은 0 부터 n-1 까지 순서대로 방문하는 것
 struct OrderSelector {
 	vector<vector<int> > ret;
-	virtual void init() {
+	virtual void init(const TSPProblem& problem) {
 		ret.clear();
-		ret.resize(n);
-		for(int i = 0; i < n; i++)
-			for(int j = 0; j < n; j++)
+		ret.resize(problem.n);
+		for(int i = 0; i < problem.n; i++)
+			for(int j = 0; j < problem.n; j++)
 				if(i != j)
 					ret[i].push_back(j);
 	}
-	virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
+	virtual vector<int> getOrder(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
 		return ret[path.back()];
 	}
 };
 
 // 탐색의 끝에 도달했는지를 확인하고, 끝에 도달했다면 완전한 경로의 길이를 반환한다
 struct FinishChecker {
-	virtual void init() {}
-	virtual pair<bool,double> isFinished(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		if(path.size() == n) return make_pair(true, length);
+	virtual void init(const TSPProblem& problem) {}
+	virtual pair<bool,double> isFinished(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		if(path.size() == problem.n) return make_pair(true, length);
 		return make_pair(false, length);
 	}
 };
@@ -84,17 +84,17 @@ struct BaseSolver {
 	vector<Estimator*> estimators;
 	OrderSelector* orderSelector;
 	FinishChecker* finishChecker;
-	virtual void init() {
+	virtual void init(const TSPProblem& problem) {
 		for(int i = 0; i < estimators.size(); ++i)
-			estimators[i]->init();
+			estimators[i]->init(problem);
 
 		if(!orderSelector)
 			orderSelector = new OrderSelector();
-		orderSelector->init();
+		orderSelector->init(problem);
 
 		if(!finishChecker)
 			finishChecker = new FinishChecker();
-		finishChecker->init();
+		finishChecker->init(problem);
 	}
 
 	void setOrderSelector(OrderSelector* selector) {
@@ -110,30 +110,30 @@ struct BaseSolver {
 	}
 
 
-	virtual double solve() = 0;
+	virtual double solve(const TSPProblem& problem) = 0;
 
 };
 
 struct DepthFirstSolver: public BaseSolver {
 	double minLength;
 
-	bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+	bool prune(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 		for(int i = 0; i < estimators.size(); i++)
-			if(estimators[i]->estimate(path, visited, length) >= minLength)
+			if(estimators[i]->estimate(problem, path, visited, length) >= minLength)
 				return true;
 		return false;
 	}
 
-	void dfs(vector<int>& path, bitset<MAX_N>& visited, double length) {
-		if(prune(path, visited, length)) return;
-		pair<bool, double> isFinished = finishChecker->isFinished(path, visited, length);
+	void dfs(const TSPProblem& problem, vector<int>& path, bitset<MAX_N>& visited, double length) {
+		if(prune(problem, path, visited, length)) return;
+		pair<bool, double> isFinished = finishChecker->isFinished(problem, path, visited, length);
 		if(isFinished.first) {
 			minLength = min(minLength, isFinished.second);
 			return;
 		}
 
 		int here = path.back();
-		vector<int> order = orderSelector->getOrder(path, visited, length, minLength);
+		vector<int> order = orderSelector->getOrder(problem, path, visited, length, minLength);
 		for(int i = 0; i < order.size(); ++i) {
 			int next = order[i];
 			if(visited[next]) continue;
@@ -141,30 +141,31 @@ struct DepthFirstSolver: public BaseSolver {
 			visited[next].flip();
 			path.push_back(next);
 
-			dfs(path, visited, length + dist[here][next]);
+			dfs(problem, path, visited, length + problem.dist[here][next]);
 
 			path.pop_back();
 			visited[next].flip();
 		}
 	}
 
-	virtual double solve() {
+	virtual double solve(const TSPProblem& problem) {
 		bitset<MAX_N> visited;
 
 		vector<int> path;
-		path.reserve(n);
+		path.reserve(problem.n);
 
 		minLength = 1e200;
-		for(int start = 0; start < n; ++start) {
+		for(int start = 0; start < problem.n; ++start) {
 			visited.flip(start);
 			path.push_back(start);
-			dfs(path, visited, 0.0);
+			dfs(problem, path, visited, 0.0);
 			path.pop_back();
 			visited.flip(start);
 		}
 		return minLength;
 	}
 };
+/*
 
 struct IDSSolver: public DepthFirstSolver {
 
@@ -249,23 +250,23 @@ struct IDAStarSolver: public BaseSolver {
 		}
 	}
 };
+*/
 
 struct Optimizer {
-
-	virtual double optimize(vector<int>& path, double curLength) = 0;
+	virtual double optimize(const TSPProblem& problem, vector<int>& path, double curLength) = 0;
 };
 
 struct TwoOptimizer : public Optimizer {
 
-	virtual double optimize(vector<int>& path, double curLength) {
+	virtual double optimize(const TSPProblem& problem, vector<int>& path, double curLength) {
 		//printf("Optimizing from %g ..\n", curLength);
 		while(true) {
 			bool improved = false;
 			for(int i = 0; i < path.size(); i++) {
 				for(int j = i+2; j+1 < path.size(); j++) {
 					// (.. path[i]) + (path[j] .. path[i+1]) + (path[j+1] ..)
-					double delta = dist[path[i]][path[j]] + dist[path[i+1]][path[j+1]]
-						- dist[path[i]][path[i+1]] - dist[path[j]][path[j+1]];
+					double delta = problem.dist[path[i]][path[j]] + problem.dist[path[i+1]][path[j+1]]
+						- problem.dist[path[i]][path[i+1]] - problem.dist[path[j]][path[j+1]];
 					if(delta < -1e-9) {
 						//printf("went down by %g\n", delta);
 						curLength += delta;
@@ -286,7 +287,7 @@ struct TwoOptimizer : public Optimizer {
 
 struct SwapOptimizer: public Optimizer {
 
-	virtual double optimize(vector<int>& path, double curLength) {
+	virtual double optimize(const TSPProblem& problem, vector<int>& path, double curLength) {
 		//printf("Optimizing from %g ..\n", curLength);
 		while(true) {
 			bool improved = false;
@@ -295,12 +296,12 @@ struct SwapOptimizer: public Optimizer {
 					int A = path[i], B = path[j];
 					double delta = 0;
 					if(i > 0)
-						delta = delta - dist[path[i-1]][A] + dist[path[i-1]][B];
+						delta = delta - problem.dist[path[i-1]][A] + problem.dist[path[i-1]][B];
 					if(j + 1 < path.size())
-						delta = delta - dist[B][path[j+1]] + dist[A][path[j+1]];
+						delta = delta - problem.dist[B][path[j+1]] + problem.dist[A][path[j+1]];
 					if(i + 1 < j)
-						delta = delta - dist[A][path[i+1]] + dist[B][path[i+1]]
-							- dist[path[j-1]][B] + dist[path[j-1]][A];
+						delta = delta - problem.dist[A][path[i+1]] + problem.dist[B][path[i+1]]
+							- problem.dist[path[j-1]][B] + problem.dist[path[j-1]][A];
 					if(delta < 0) {
 						//printf("went down by %g\n", delta);
 						curLength += delta;
@@ -328,11 +329,11 @@ struct OptimizingFinishChecker: public FinishChecker {
 		optimizers.push_back(optimizer);
 	}
 
-	virtual pair<bool,double> isFinished(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		if(path.size() < n) return make_pair(false, length);
+	virtual pair<bool,double> isFinished(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		if(path.size() < problem.n) return make_pair(false, length);
 		vector<int> optimized = path;
 		for(int i = 0; i < optimizers.size(); i++) {
-			length = optimizers[i]->optimize(optimized, length);
+			length = optimizers[i]->optimize(problem, optimized, length);
 		}
 
 		return make_pair(true, length);
@@ -349,23 +350,23 @@ struct MemoizingFinishChecker : public FinishChecker {
 	MemoizingFinishChecker(int stateLimit) : stateLimit(stateLimit) {
 	}
 
-	void calcBino() {
+	void calcBino(const TSPProblem& problem) {
 		memset(bino, 0, sizeof(bino));
 		for(int i = 0; i < MAX_N; ++i) {
 			bino[i][0] = 1;
 			for(int j = 1; j < i+1; j++) {
-				bino[i][j] = min(stateLimit/n+1, bino[i-1][j-1] + bino[i-1][j]);
+				bino[i][j] = min(stateLimit/problem.n+1, bino[i-1][j-1] + bino[i-1][j]);
 			}
 		}
 	}
 
-	void determineCacheDepth() {
+	void determineCacheDepth(const TSPProblem& problem) {
 		cacheDepth = 0;
-		int stateCount = n;
+		int stateCount = problem.n;
 
 		// determine depth of cache
-		while(cacheDepth < n-1) {
-			int newStates = bino[n][cacheDepth+1] * n;
+		while(cacheDepth < problem.n-1) {
+			int newStates = bino[problem.n][cacheDepth+1] * problem.n;
 			if(stateCount + newStates > stateLimit) break;
 			stateCount += newStates;
 			++cacheDepth;
@@ -373,70 +374,38 @@ struct MemoizingFinishChecker : public FinishChecker {
 		//fprintf(stderr, "Determined a cache depth of %d StateCount = %d\n", cacheDepth, stateCount);
 	}
 
-	int calcIndex(const vector<int>& selected) {
+	int calcIndex(const TSPProblem& problem, const vector<int>& selected) {
 		int ret = 0;
 		for(int i = 0; i < selected.size(); ++i)
-			ret += bino[n - selected[i] - 1][selected.size() - i];
+			ret += bino[problem.n - selected[i] - 1][selected.size() - i];
 		return ret;
 	}
 
-	void test() {
-		for(int levels = 1; levels <= cacheDepth; ++levels) {
-			map<int,int> seen;
-			for(int mask = (1LL<<n)-1; mask >= 0; --mask) {
-				if(__builtin_popcount(mask) == levels) {
-					vector<int> selected;
-					for(int i = 0; i < n; i++) {
-						if(mask & (1LL<<i))
-							selected.push_back(i);
-					}
-					printf("level = %d mask = %d selected =", levels, mask);
-					for(int i = 0; i < selected.size(); i++) {
-						printf(" %d", selected[i]);
-					}
-					int got = calcIndex(selected);
-					printf(" got = %d\n", got);
-					if(got < 0 || got >= bino[n][levels]) {
-						printf("OVERFLOW!!\n");
-						printf("bino[%d][%d] = %d, got = %d\n", n, levels, bino[n][levels], got);
-						throw 1;
-					}
-					if(seen.count(got)) {
-						printf("CLASH!!!\n");
-						printf("Seen[%d] is already taken by mask=%d\n", got, seen[got]);
-						throw 1;
-					}
-					seen[got] = mask;
-				}
-			}
-		}
-	}
-
-	virtual void init() {
-		calcBino();
-		determineCacheDepth();
+	virtual void init(const TSPProblem& problem) {
+		calcBino(problem);
+		determineCacheDepth(problem);
 
 		//test();
 
-		for(int i = 0; i < n; i++) {
+		for(int i = 0; i < problem.n; i++) {
 			cache[i].clear();
 			cache[i].resize(cacheDepth + 1);
 			for(int j = 1; j <= cacheDepth; j++) {
-				cache[i][j].resize(bino[n][j], -1);
+				cache[i][j].resize(bino[problem.n][j], -1);
 			}
 		}
 	}
 
-	double solve(int here, const vector<int>& toVisit) {
+	double solve(const TSPProblem& problem, int here, const vector<int>& toVisit) {
 		if(toVisit.empty()) return 0;
-		int idx = calcIndex(toVisit);
+		int idx = calcIndex(problem, toVisit);
 		double& ret = cache[here][toVisit.size()][idx];
 		if(ret >= 0) return ret;
 		ret = 1e200;
 		for(int i = 0; i < toVisit.size(); ++i) {
 			vector<int> toVisit2 = toVisit;
 			toVisit2.erase(toVisit2.begin() + i);
-			ret = min(ret, dist[here][toVisit[i]] + solve(toVisit[i], toVisit2));
+			ret = min(ret, problem.dist[here][toVisit[i]] + solve(problem, toVisit[i], toVisit2));
 		}
 		/*
 		   printf("solve(here=%d, toVisit=", here);
@@ -448,14 +417,14 @@ struct MemoizingFinishChecker : public FinishChecker {
 		return ret;
 	}
 
-	virtual pair<bool,double> isFinished(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		if(n == path.size()) return make_pair(true, length);
-		if(n - path.size() == cacheDepth) {
+	virtual pair<bool,double> isFinished(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		if(problem.n == path.size()) return make_pair(true, length);
+		if(problem.n - path.size() == cacheDepth) {
 			vector<int> toVisit;
-			for(int i = 0; i < n; i++)
+			for(int i = 0; i < problem.n; i++)
 				if(!visited[i])
 					toVisit.push_back(i);
-			return make_pair(true, length + solve(path.back(), toVisit));
+			return make_pair(true, length + solve(problem, path.back(), toVisit));
 		}
 		return make_pair(false, length);
 	}
@@ -463,14 +432,14 @@ struct MemoizingFinishChecker : public FinishChecker {
 
 struct NearestNeighborOrderSelector : public OrderSelector {
 
-	virtual void init() {
+	virtual void init(const TSPProblem& problem) {
 		ret.clear();
-		ret.resize(n);
-		for(int i = 0; i < n; i++) {
+		ret.resize(problem.n);
+		for(int i = 0; i < problem.n; i++) {
 			vector<pair<double,int> > ord;
-			for(int j = 0; j < n; j++)
+			for(int j = 0; j < problem.n; j++)
 				if(i != j)
-					ord.push_back(make_pair(dist[i][j], j));
+					ord.push_back(make_pair(problem.dist[i][j], j));
 			sort(ord.begin(), ord.end());
 			for(int j = 0; j < ord.size(); j++)
 				ret[i].push_back(ord[j].second);
@@ -483,32 +452,32 @@ struct NearestNeighborOrderSelector : public OrderSelector {
 
 struct PathSwapPruner : public Pruner {
 
-	virtual bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+	virtual bool prune(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 		if(path.size() < 4) return false;
 		const int a = path[path.size()-4];
 		const int b = path[path.size()-3];
 		const int c = path[path.size()-2];
 		const int d = path[path.size()-1];
-		if(dist[a][b] + dist[c][d] > dist[a][c] + dist[b][d]) return true;
+		if(problem.dist[a][b] + problem.dist[c][d] > problem.dist[a][c] + problem.dist[b][d]) return true;
 	}
 };
 
 struct PathReversePruner: public Pruner {
 
-	virtual bool prune(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+	virtual bool prune(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 		if(path.size() < 3) return false;
 		int c = path[path.size()-2];
 		int d = path.back();
 		for(int i = 0; i+2 < path.size(); ++i) {
 			int a = path[i], b = path[i+1];
-			if(dist[a][c] + dist[b][d] < dist[a][b] + dist[c][d]) return true;
+			if(problem.dist[a][c] + problem.dist[b][d] < problem.dist[a][b] + problem.dist[c][d]) return true;
 		}
 		return false;
 	}
 };
 
 struct NaiveEstimator : public Estimator {
-	virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+	virtual double estimate(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 		return length;
 	}
 };
@@ -516,19 +485,19 @@ struct NaiveEstimator : public Estimator {
 struct IncomingEdgeEstimator : public Estimator {
 
 	vector<double> minEdge;
-	virtual void init() {
-		minEdge.resize(n);
-		for(int i = 0; i < n; i++) {
+	virtual void init(const TSPProblem& problem) {
+		minEdge.resize(problem.n);
+		for(int i = 0; i < problem.n; i++) {
 			minEdge[i] = 1e200;
-			for(int j = 0; j < n; j++)
+			for(int j = 0; j < problem.n; j++)
 				if(i != j)
-					minEdge[i] = min(minEdge[i], dist[i][j]);
+					minEdge[i] = min(minEdge[i], problem.dist[i][j]);
 		}
 	}
 
-	virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+	virtual double estimate(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
 		double lowerBound = length;
-		for(int i = 0; i < n; ++i)
+		for(int i = 0; i < problem.n; ++i)
 			if(!visited[i])
 				lowerBound += minEdge[i];
 		return lowerBound;
@@ -562,18 +531,18 @@ struct MSTEstimator: public Estimator {
 
 	vector<pair<double,pair<int,int> > > edges;
 
-	virtual void init() {
+	virtual void init(const TSPProblem& problem) {
 		edges.clear();
-		for(int i = 0; i < n; ++i)
-			for(int j = i+1; j < n; j++)
-				edges.push_back(make_pair(dist[i][j], make_pair(i, j)));
+		for(int i = 0; i < problem.n; ++i)
+			for(int j = i+1; j < problem.n; j++)
+				edges.push_back(make_pair(problem.dist[i][j], make_pair(i, j)));
 		sort(edges.begin(), edges.end());
 	}
 
-	double getLowerBound(int here, const bitset<MAX_N>& visited) {
-		UnionFind* uf = new UnionFind(n);
+	double getLowerBound(const TSPProblem& problem, int here, const bitset<MAX_N>& visited) {
+		UnionFind* uf = new UnionFind(problem.n);
 		double taken = 0;
-		vector<vector<int> > adj(n);
+		vector<vector<int> > adj(problem.n);
 		for(int i = 0; i < edges.size(); i++) {
 			int a = edges[i].second.first, b = edges[i].second.second;
 			if(a != here && visited[a]) continue;
@@ -590,8 +559,8 @@ struct MSTEstimator: public Estimator {
 		return taken;
 	}
 
-	virtual double estimate(const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		return length + getLowerBound(path.empty() ? -1 : path.back(), visited);
+	virtual double estimate(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+		return length + getLowerBound(problem, path.empty() ? -1 : path.back(), visited);
 	}
 };
 
@@ -602,21 +571,21 @@ struct EstimatingOrderSelector : public OrderSelector {
 	EstimatingOrderSelector(Estimator* estimator) : estimator(estimator) {
 	}
 
-	virtual void init() {
-		estimator->init();
+	virtual void init(const TSPProblem& problem) {
+		estimator->init(problem);
 	}
 
-	virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
+	virtual vector<int> getOrder(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
 		vector<pair<double,int> > ord;
 		vector<int> newPath = path;
 		newPath.push_back(-1);
 		bitset<MAX_N> newVisited = visited;
-		for(int i = 0; i < n; i++) {
+		for(int i = 0; i < problem.n; i++) {
 			if(visited[i]) continue;
 			newPath.back() = i;
 			newVisited.flip(i);
 
-			ord.push_back(make_pair(estimator->estimate(newPath, newVisited, length + dist[path.back()][i]), i));
+			ord.push_back(make_pair(estimator->estimate(problem, newPath, newVisited, length + problem.dist[path.back()][i]), i));
 
 			newVisited.flip(i);
 		}
@@ -711,8 +680,9 @@ void setupSolvers() {
 					}
 					solvers["DFS" + name] = solver;
 				}
+				/*
 				{
-					/* Setup IDSSolver */
+					/* Setup IDSSolver *
 					string name = base2;
 					IDSSolver* solver = new IDSSolver();
 					solver->setOrderSelector(selectors[selector]);
@@ -725,18 +695,19 @@ void setupSolvers() {
 					}
 					solvers["IDS" + name] = solver;
 				}
+				*/
 			}
 		}
 	}
 }
 
-	double solve(const string& algorithm) {
-		if(solvers.count(algorithm) == 0)
-			return -1;
-		BaseSolver* s = solvers[algorithm];
-		s->init();
-		return s->solve();
-	}
+double solve(const string& algorithm, const TSPProblem& problem) {
+	if(solvers.count(algorithm) == 0)
+		return -1;
+	BaseSolver* s = solvers[algorithm];
+	s->init(problem);
+	return s->solve(problem);
+}
 
 int main(int argc, char* argv[]) {
 	setupSolvers();
@@ -758,8 +729,7 @@ int main(int argc, char* argv[]) {
 	int cases;
 	inp >> cases;
 	for(int i = 0; i < cases; ++i) {
-		read(inp);
-		outp << solve(argv[1]) << endl;
+		outp << solve(argv[1], read(inp)) << endl;
 	}
 }
 
