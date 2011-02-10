@@ -24,11 +24,14 @@ struct TSPProblem {
 
 // 여행하는 외판원 문제의 상태를 정의한다
 struct TSPState {
-	vector<int> path;
-	bitset<MAX_N> visited;
-	double length;
-
+	// 문제 입력
 	const TSPProblem& problem;
+	// 지금까지 방문한 (부분) 경로
+	vector<int> path;
+	// 각 정점을 방문했는지 여부
+	bitset<MAX_N> visited;
+	// 현재 경로의 길이
+	double length;
 
 	TSPState(const TSPProblem& problem) : problem(problem) {
 		path.reserve(problem.n);
@@ -36,12 +39,14 @@ struct TSPState {
 		length = 0;
 	}
 
+	// vertex 를 현재 경로 뒤에 추가한다
 	void push(int vertex) {
 		if(!path.empty()) length += problem.dist[path.back()][vertex];
 		path.push_back(vertex);
 		visited.set(vertex);
 	}
 
+	// 현재 경로 맨 뒤의 정점을 삭제한다
 	void pop() {
 		int vertex = path.back();
 		path.pop_back();
@@ -69,48 +74,54 @@ TSPProblem read(istream& inp) {
 struct Estimator {
 	virtual void init(const TSPProblem& problem) {
 	}
+
 	virtual double estimate(const TSPState& state) = 0;
 };
 
-// 현재 상태가 주어질 때 더 탐색할 필요가 있는지 없는지를 반환한다
+// 현재 상태가 주어질 때 더 탐색할 필요가 있는지 없는지를 반환한다.
 struct Pruner {
 	virtual void init(const TSPProblem& problem) {
 	}
+
 	virtual bool prune(const TSPState& state) = 0;
 };
 
 
-// 현재 상태가 주어질 때 어느 순서로 다음 정점을 시도해야 할 지를 반환한다
-// 기본 구현은 0 부터 n-1 까지 순서대로 방문하는 것
+// 현재 상태가 주어질 때 어느 순서로 다음 정점을 시도해야 할 지를 반환한다.
+// 기본 구현은 0 부터 n-1 까지 순서대로 방문하는 순서를 항상 반환한다.
 struct OrderSelector {
-	vector<vector<int> > ret;
+	vector<int> defaultOrder;
 	virtual void init(const TSPProblem& problem) {
-		ret.clear();
-		ret.resize(problem.n);
-		for(int i = 0; i < problem.n; i++)
-			for(int j = 0; j < problem.n; j++)
-				if(i != j)
-					ret[i].push_back(j);
+		defaultOrder.resize(problem.n);
+		for(int i = 0; i < problem.n; ++i)
+			defaultOrder[i] = i;
 	}
 	virtual vector<int> getOrder(const TSPState& state, double minLength) {
-		return ret[state.path.back()];
+		return defaultOrder;
 	}
 };
 
-// 탐색의 끝에 도달했는지를 확인하고, 끝에 도달했다면 완전한 경로의 길이를 반환한다
+// 탐색의 끝에 도달했는지를 확인하고, 끝에 도달했다면 완전한 경로의 길이를 반환한다.
+// 기본 구현은 path 의 길이가 n 과 같을 경우 탐색을 종료한다.
 struct FinishChecker {
-	virtual void init(const TSPProblem& problem) {}
+	virtual void init(const TSPProblem& problem) {
+	}
+	// (탐색 종료 여부, 경로의 최종 길이) 를 반환한다.
 	virtual pair<bool,double> isFinished(const TSPState& state) {
-		if(state.path.size() == state.problem.n) return
-			make_pair(true, state.length);
+		if(state.path.size() == state.problem.n)
+			return make_pair(true, state.length);
 		return make_pair(false, state.length);
 	}
 };
 
-struct BaseSolver {
+// TSP 문제를 해결하는 깊이 우선 탐색을 구현하는 클래스.
+struct DepthFirstSolver {
+	double minLength;
+
 	vector<Estimator*> estimators;
 	OrderSelector* orderSelector;
 	FinishChecker* finishChecker;
+
 	virtual void init(const TSPProblem& problem) {
 		for(int i = 0; i < estimators.size(); ++i)
 			estimators[i]->init(problem);
@@ -135,14 +146,6 @@ struct BaseSolver {
 	void setFinishChecker(FinishChecker* checker) {
 		finishChecker = checker;
 	}
-
-
-	virtual double solve(const TSPProblem& problem) = 0;
-};
-
-struct DepthFirstSolver: public BaseSolver {
-	double minLength;
-
 	bool prune(const TSPState& state) {
 		for(int i = 0; i < estimators.size(); i++)
 			if(estimators[i]->estimate(state) >= minLength)
@@ -441,6 +444,7 @@ struct MemoizingFinishChecker : public FinishChecker {
 
 struct NearestNeighborOrderSelector : public OrderSelector {
 
+	vector<vector<int> > ret;
 	virtual void init(const TSPProblem& problem) {
 		ret.clear();
 		ret.resize(problem.n);
@@ -604,7 +608,7 @@ struct EstimatingOrderSelector : public OrderSelector {
 	}
 };
 
-map<string, BaseSolver*> solvers;
+map<string, DepthFirstSolver*> solvers;
 
 void setupSolvers() {
 
@@ -709,7 +713,7 @@ void setupSolvers() {
 double solve(const string& algorithm, const TSPProblem& problem) {
 	if(solvers.count(algorithm) == 0)
 		return -1;
-	BaseSolver* s = solvers[algorithm];
+	DepthFirstSolver* s = solvers[algorithm];
 	s->init(problem);
 	return s->solve(problem);
 }
@@ -721,7 +725,7 @@ int main(int argc, char* argv[]) {
 		printf("Usage) %s [algorithm] [input] [output]\n\n", argv[0]);
 		printf("algorithm = ");
 		bool first = true;
-		for(map<string,BaseSolver*>::iterator it = solvers.begin(); it != solvers.end(); ++it) {
+		for(map<string,DepthFirstSolver*>::iterator it = solvers.begin(); it != solvers.end(); ++it) {
 			if(!first) printf(" | ");
 			first = false;
 			printf("%s", it->first.c_str());
