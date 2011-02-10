@@ -495,6 +495,7 @@ struct EstimatingPruner : public Pruner {
 
 };
 
+// 현재 정점 이전 두 개의 정점의 순서를 바꿔 보고 더 좋아지면 탐색을 중단한다
 struct PathSwapPruner : public Pruner {
 
 	virtual bool prune(const TSPState& state, double minLength) {
@@ -508,6 +509,7 @@ struct PathSwapPruner : public Pruner {
 	}
 };
 
+// 경로의 일부분을 뒤집어 보고 더 좋아지면 탐색을 중단한다
 struct PathReversePruner: public Pruner {
 
 	virtual bool prune(const TSPState& state, double minLength) {
@@ -725,6 +727,16 @@ void setupSolvers() {
 		checkers.push_back(opt);
 	}
 
+	// SETUP PRUNERS
+	vector<string> prunerNames;
+	vector<Pruner*> pruners;
+
+	prunerNames.push_back("PathSwap");
+	pruners.push_back(new PathSwapPruner());
+
+	prunerNames.push_back("PathReverse");
+	pruners.push_back(new PathReversePruner());
+
 	// SETUP ESTIMATORS
 	vector<string> estimatorNames;
 	vector<Estimator*> estimators;
@@ -743,46 +755,59 @@ void setupSolvers() {
 
 	int s = selectors.size();
 	int c = checkers.size();
-	int p = estimators.size();
+	int p = pruners.size();
+	int e = estimators.size();
 	for(int selector = 0; selector < s; ++selector) {
 		string base = ":" + selectorNames[selector] + ":";
 		for(int checker = 0; checker < c; ++checker) {
 			string base2 = base + checkerNames[checker] + ":";
-			for(int estimatorSet = 0; estimatorSet < (1<<p); ++estimatorSet) {
-				{
-					/* Setup DepthFirstSolver */
-					string name = base2;
-					DepthFirstSolver* solver = new DepthFirstSolver();
-					solver->setOrderSelector(selectors[selector]);
-					solver->setFinishChecker(checkers[checker]);
-					if(estimatorSet) {
-						EstimatingPruner* pruner = new EstimatingPruner();
-						for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
-							if(name[name.size()-1] != ':')
-								name += ',';
-							name += estimatorNames[i];
-							pruner->addEstimator(estimators[i]);
+			for(int prunerSet = 0; prunerSet < (1<<p); ++prunerSet) {
+				for(int estimatorSet = 0; estimatorSet < (1<<e); ++estimatorSet) {
+					{
+						/* Setup DepthFirstSolver */
+						string name = base2;
+						DepthFirstSolver* solver = new DepthFirstSolver();
+						solver->setOrderSelector(selectors[selector]);
+						solver->setFinishChecker(checkers[checker]);
+						if(prunerSet) {
+							for(int i = 0; i < p; ++i)
+								if(prunerSet & (1<<i)) {
+									solver->addPruner(pruners[i]);
+									if(name[name.size()-1] != ':')
+										name += ',';
+									name += prunerNames[i];
+								}
 						}
-						solver->addPruner(pruner);
+						name += ":";
+						if(estimatorSet) {
+							EstimatingPruner* pruner = new EstimatingPruner();
+							for(int i = 0; i < e; i++) if(estimatorSet & (1<<i)) {
+								if(name[name.size()-1] != ':')
+									name += ',';
+								name += estimatorNames[i];
+								pruner->addEstimator(estimators[i]);
+							}
+							solver->addPruner(pruner);
+						}
+						solvers["DFS" + name] = solver;
 					}
-					solvers["DFS" + name] = solver;
-				}
-				/*
-				{
+					/*
+					   {
 					/* Setup IDSSolver *
 					string name = base2;
 					IDSSolver* solver = new IDSSolver();
 					solver->setOrderSelector(selectors[selector]);
 					solver->setFinishChecker(checkers[checker]);
 					for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
-						if(name[name.size()-1] != ':')
-							name += ',';
-						name += estimatorNames[i];
-						solver->addEstimator(estimators[i]);
+					if(name[name.size()-1] != ':')
+					name += ',';
+					name += estimatorNames[i];
+					solver->addEstimator(estimators[i]);
 					}
 					solvers["IDS" + name] = solver;
+					}
+					*/
 				}
-				*/
 			}
 		}
 	}
