@@ -83,7 +83,7 @@ struct Pruner {
 	virtual void init(const TSPProblem& problem) {
 	}
 
-	virtual bool prune(const TSPState& state) = 0;
+	virtual bool prune(const TSPState& state, double minLength) = 0;
 };
 
 
@@ -465,7 +465,7 @@ struct NearestNeighborOrderSelector : public OrderSelector {
 
 struct PathSwapPruner : public Pruner {
 
-	virtual bool prune(const TSPState& state) {
+	virtual bool prune(const TSPState& state, double minLength) {
 		if(state.path.size() < 4) return false;
 		const int a = state.path[state.path.size()-4];
 		const int b = state.path[state.path.size()-3];
@@ -478,7 +478,7 @@ struct PathSwapPruner : public Pruner {
 
 struct PathReversePruner: public Pruner {
 
-	virtual bool prune(const TSPState& state) {
+	virtual bool prune(const TSPState& state, double minLength) {
 		if(state.path.size() < 3) return false;
 		int c = state.path[state.path.size()-2];
 		int d = state.path.back();
