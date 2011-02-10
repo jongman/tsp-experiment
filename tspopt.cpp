@@ -580,6 +580,36 @@ struct UnionFind
 	}
 };
 
+// 현재 위치와 방문하지 않은 정점들간을 연결하는 간선 중 가장 짧은 x개의
+// 합을 반환하는 휴리스틱
+struct SmallestEdgesEstimator: public Estimator {
+
+	vector<pair<double,pair<int,int> > > edges;
+
+	// 각 간선의 목록을 가중치별로 정렬해 edges 에 저장해 둔다
+	virtual void init(const TSPProblem& problem) {
+		edges.clear();
+		for(int i = 0; i < problem.n; ++i)
+			for(int j = i+1; j < problem.n; j++)
+				edges.push_back(make_pair(problem.dist[i][j], make_pair(i, j)));
+		sort(edges.begin(), edges.end());
+	}
+	virtual double estimate(const TSPState& state) {
+		double lowerBound = state.length;
+		int need = state.problem.n - state.path.size();
+		int here = state.path.empty() ? -1 : state.path.back();
+		for(int i = 0; i < edges.size(); i++) {
+			// 간선은 아직 방문하지 않은 점이나 현재 경로의 마지막 점을 연결해야 한다
+			int a = edges[i].second.first, b = edges[i].second.second;
+			if(a != here && state.visited[a]) continue;
+			if(b != here && state.visited[b]) continue;
+			lowerBound += edges[i].first;
+			if(--need == 0) break;
+		}
+		return lowerBound;
+	}
+};
+
 // 현재 위치와 방문하지 않은 정점들을 모두 잇는 MST 를 구하는 휴리스틱
 struct MSTEstimator: public Estimator {
 
@@ -704,6 +734,9 @@ void setupSolvers() {
 
 	estimatorNames.push_back("IncomingEdge");
 	estimators.push_back(new IncomingEdgeEstimator());
+
+	estimatorNames.push_back("SmallestEdges");
+	estimators.push_back(new SmallestEdgesEstimator());
 
 	estimatorNames.push_back("MST");
 	estimators.push_back(new MSTEstimator());
