@@ -281,8 +281,55 @@ struct IDAStarSolver: public BaseSolver {
 };
 */
 
+// 완성된 답이 주어질 때 이 답을 적절히 개선한다.
 struct Optimizer {
 	virtual void optimize(TSPState& state) = 0;
+};
+
+struct LocalSearchOptimizer: public Optimizer {
+	virtual void optimize(TSPState& s) {
+		while(true) {
+			bool improved = false;
+			for(int i = 0; i < s.path.size(); i++) {
+				for(int j = i+1; j < s.path.size(); j++) {
+					int A = s.path[i], B = s.path[j];
+					double delta = 0;
+					if(i > 0)
+						delta = delta - s.problem.dist[s.path[i-1]][A] + s.problem.dist[s.path[i-1]][B];
+					if(j + 1 < s.path.size())
+						delta = delta - s.problem.dist[B][s.path[j+1]] + s.problem.dist[A][s.path[j+1]];
+					if(i + 1 < j)
+						delta = delta - s.problem.dist[A][s.path[i+1]] + s.problem.dist[B][s.path[i+1]]
+							- s.problem.dist[s.path[j-1]][B] + s.problem.dist[s.path[j-1]][A];
+					if(delta < 0) {
+						s.length += delta;
+						improved = true;
+						swap(s.path[i], s.path[j]);
+						break;
+					}
+				}
+				if(improved) break;
+			}
+			if(improved) continue;
+			for(int i = 0; i < s.path.size(); i++) {
+				for(int j = i+2; j+1 < s.path.size(); j++) {
+					//           A  +   B               C        D
+					// (.. path[i]) + (path[j] .. path[i+1]) + (path[j+1] ..)
+					int A = s.path[i], B = s.path[j], C = s.path[i+1], D = s.path[j+1];
+					double delta = s.problem.dist[A][B] + s.problem.dist[C][D]
+						- s.problem.dist[A][C] - s.problem.dist[B][D];
+					if(delta < -1e-9) {
+						s.length += delta;
+						improved = true;
+						reverse(s.path.begin() + i + 1, s.path.begin() + j + 1);
+						break;
+					}
+				}
+				if(improved) break;
+			}
+			if(!improved) break;
+		}
+	}
 };
 
 struct TwoOptimizer : public Optimizer {
@@ -312,8 +359,9 @@ struct TwoOptimizer : public Optimizer {
 
 };
 
+// 임의의 두 정점의 순서를 바꿨을 때 경로가 더 짧아지면 바꾸는 것을 반복하는
+// 국소 탐색을 구현한다.
 struct SwapOptimizer: public Optimizer {
-
 	virtual void optimize(TSPState& s) {
 		while(true) {
 			bool improved = false;
@@ -343,9 +391,8 @@ struct SwapOptimizer: public Optimizer {
 
 };
 
+// 최적해가 갱신될 때마다 Optimizer 로 개선해 본다
 struct OptimizingFinishChecker: public FinishChecker {
-
-
 	vector<Optimizer*> optimizers;
 
 	void addOptimizer(Optimizer* optimizer) {
@@ -706,6 +753,14 @@ void setupSolvers() {
 
 	checkerNames.push_back("Memoization");
 	checkers.push_back(new MemoizingFinishChecker(500000));
+	{
+		checkerNames.push_back("OptimizingLocalSearch");
+		OptimizingFinishChecker* opt = new OptimizingFinishChecker();
+		opt->addOptimizer(new LocalSearchOptimizer());
+		//opt->addOptimizer(new TwoOptimizer());
+		checkers.push_back(opt);
+	}
+
 
 	{
 		checkerNames.push_back("OptimizingSwap");
