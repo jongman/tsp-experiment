@@ -118,13 +118,13 @@ struct FinishChecker {
 struct DepthFirstSolver {
 	double minLength;
 
-	vector<Estimator*> estimators;
+	vector<Pruner*> pruners;
 	OrderSelector* orderSelector;
 	FinishChecker* finishChecker;
 
 	virtual void init(const TSPProblem& problem) {
-		for(int i = 0; i < estimators.size(); ++i)
-			estimators[i]->init(problem);
+		for(int i = 0; i < pruners.size(); ++i)
+			pruners[i]->init(problem);
 
 		if(!orderSelector)
 			orderSelector = new OrderSelector();
@@ -135,20 +135,20 @@ struct DepthFirstSolver {
 		finishChecker->init(problem);
 	}
 
-	void setOrderSelector(OrderSelector* selector) {
-		orderSelector = selector;
+	void addPruner(Pruner* pruner) {
+		pruners.push_back(pruner);
 	}
 
-	void addEstimator(Estimator* estimator) {
-		estimators.push_back(estimator);
+	void setOrderSelector(OrderSelector* selector) {
+		orderSelector = selector;
 	}
 
 	void setFinishChecker(FinishChecker* checker) {
 		finishChecker = checker;
 	}
 	bool prune(const TSPState& state) {
-		for(int i = 0; i < estimators.size(); i++)
-			if(estimators[i]->estimate(state) >= minLength)
+		for(int i = 0; i < pruners.size(); ++i)
+			if(pruners[i]->prune(state, minLength))
 				return true;
 		return false;
 	}
@@ -463,6 +463,27 @@ struct NearestNeighborOrderSelector : public OrderSelector {
 	}
 };
 
+struct EstimatingPruner : public Pruner {
+	vector<Estimator*> estimators;
+
+	void addEstimator(Estimator* estimator) {
+		estimators.push_back(estimator);
+	}
+
+	virtual void init(const TSPProblem& problem) {
+		for(int i = 0; i < estimators.size(); ++i)
+			estimators[i]->init(problem);
+	}
+
+	virtual bool prune(const TSPState& state, double minLength) {
+		for(int i = 0; i < estimators.size(); ++i)
+			if(estimators[i]->estimate(state) >= minLength)
+				return true;
+		return false;
+	}
+
+};
+
 struct PathSwapPruner : public Pruner {
 
 	virtual bool prune(const TSPState& state, double minLength) {
@@ -681,11 +702,15 @@ void setupSolvers() {
 					DepthFirstSolver* solver = new DepthFirstSolver();
 					solver->setOrderSelector(selectors[selector]);
 					solver->setFinishChecker(checkers[checker]);
-					for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
-						if(name[name.size()-1] != ':')
-							name += ',';
-						name += estimatorNames[i];
-						solver->addEstimator(estimators[i]);
+					if(estimatorSet) {
+						EstimatingPruner* pruner = new EstimatingPruner();
+						for(int i = 0; i < p; i++) if(estimatorSet & (1<<i)) {
+							if(name[name.size()-1] != ':')
+								name += ',';
+							name += estimatorNames[i];
+							pruner->addEstimator(estimators[i]);
+						}
+						solver->addPruner(pruner);
 					}
 					solvers["DFS" + name] = solver;
 				}
