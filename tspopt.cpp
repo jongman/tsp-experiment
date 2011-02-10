@@ -116,8 +116,10 @@ struct FinishChecker {
 
 // TSP 문제를 해결하는 깊이 우선 탐색을 구현하는 클래스.
 struct DepthFirstSolver {
+	// 지금까지 찾은 최단 경로의 길이. 탐색 중 갱신된다.
 	double minLength;
 
+	// 최적화를 구현하는 객체들
 	vector<Pruner*> pruners;
 	OrderSelector* orderSelector;
 	FinishChecker* finishChecker;
@@ -146,6 +148,8 @@ struct DepthFirstSolver {
 	void setFinishChecker(FinishChecker* checker) {
 		finishChecker = checker;
 	}
+
+	// Pruner 들 중 하나라도 탐색을 중단하라고 하는지 확인한다
 	bool prune(const TSPState& state) {
 		for(int i = 0; i < pruners.size(); ++i)
 			if(pruners[i]->prune(state, minLength))
@@ -154,14 +158,16 @@ struct DepthFirstSolver {
 	}
 
 	void dfs(TSPState& state) {
+		// 탐색을 중단할지 확인한다
 		if(prune(state)) return;
+		// 기저 사례를 확인한다
 		pair<bool, double> isFinished = finishChecker->isFinished(state);
 		if(isFinished.first) {
 			minLength = min(minLength, isFinished.second);
 			return;
 		}
 
-		int here = state.path.back();
+		// 다음 정점을 결정한다
 		vector<int> order = orderSelector->getOrder(state, minLength);
 		for(int i = 0; i < order.size(); ++i) {
 			int next = order[i];
@@ -174,9 +180,12 @@ struct DepthFirstSolver {
 	}
 
 	virtual double solve(const TSPProblem& problem) {
+		// 빈 상태를 생성한다
 		TSPState state(problem);
 
 		minLength = 1e200;
+
+		// 모든 시작점을 하나씩 시도해 본다
 		for(int start = 0; start < problem.n; ++start) {
 			state.push(start);
 			dfs(state);
@@ -463,6 +472,7 @@ struct NearestNeighborOrderSelector : public OrderSelector {
 	}
 };
 
+// 답의 하한을 예상하는 estimator 들을 이용한 가지치기를 구현한다.
 struct EstimatingPruner : public Pruner {
 	vector<Estimator*> estimators;
 
@@ -475,6 +485,7 @@ struct EstimatingPruner : public Pruner {
 			estimators[i]->init(problem);
 	}
 
+	// estimator 중 하나라도 현재 답 이상의 하한을 예상하면 걸러낸다.
 	virtual bool prune(const TSPState& state, double minLength) {
 		for(int i = 0; i < estimators.size(); ++i)
 			if(estimators[i]->estimate(state) >= minLength)
@@ -513,15 +524,19 @@ struct PathReversePruner: public Pruner {
 	}
 };
 
+// 별다른 일을 하지 않는 Estimator 의 구현
 struct NaiveEstimator : public Estimator {
 	virtual double estimate(const TSPState& state) {
 		return state.length;
 	}
 };
 
+// 남아 있는 정점에 대해 인접한 최소 간선의 합을 반환한다.
 struct IncomingEdgeEstimator : public Estimator {
 
 	vector<double> minEdge;
+
+	// 각 정점에 인접한 간선 중 가장 짧은 것을 미리 찾아 둔다.
 	virtual void init(const TSPProblem& problem) {
 		minEdge.resize(problem.n);
 		for(int i = 0; i < problem.n; i++) {
@@ -541,6 +556,7 @@ struct IncomingEdgeEstimator : public Estimator {
 	}
 };
 
+// Union-Find 상호 배제적 집합 자료 구조를 구현한다
 struct UnionFind
 {
 	int n, components;
@@ -564,10 +580,12 @@ struct UnionFind
 	}
 };
 
+// 현재 위치와 방문하지 않은 정점들을 모두 잇는 MST 를 구하는 휴리스틱
 struct MSTEstimator: public Estimator {
 
 	vector<pair<double,pair<int,int> > > edges;
 
+	// Kruskal 을 위해 각 간선의 목록을 가중치별로 정렬해 edges 에 저장해 둔다
 	virtual void init(const TSPProblem& problem) {
 		edges.clear();
 		for(int i = 0; i < problem.n; ++i)
@@ -576,6 +594,7 @@ struct MSTEstimator: public Estimator {
 		sort(edges.begin(), edges.end());
 	}
 
+	// Kruskal's MST
 	double getLowerBound(const TSPState& state) {
 		int here = state.path.empty() ? -1 : state.path.back();
 		UnionFind* uf = new UnionFind(state.problem.n);
@@ -599,6 +618,7 @@ struct MSTEstimator: public Estimator {
 	}
 };
 
+// Estimator 가 낮은 하한을 반환하는 선택지부터 시도한다
 struct EstimatingOrderSelector : public OrderSelector {
 
 	Estimator *estimator;
