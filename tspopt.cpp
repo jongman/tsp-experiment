@@ -22,6 +22,35 @@ struct TSPProblem {
 	double dist[MAX_N][MAX_N];
 };
 
+// 여행하는 외판원 문제의 상태를 정의한다
+struct TSPState {
+	vector<int> path;
+	bitset<MAX_N> visited;
+	double length;
+
+	const TSPProblem& problem;
+
+	TSPState(const TSPProblem& problem) : problem(problem) {
+		path.reserve(problem.n);
+		visited.reset();
+		length = 0;
+	}
+
+	void push(int vertex) {
+		if(!path.empty()) length += problem.dist[path.back()][vertex];
+		path.push_back(vertex);
+		visited.set(vertex);
+	}
+
+	void pop() {
+		int vertex = path.back();
+		path.pop_back();
+
+		if(!path.empty()) length -= problem.dist[path.back()][vertex];
+		visited.reset(vertex);
+	}
+};
+
 TSPProblem read(istream& inp) {
 	TSPProblem problem;
 	inp >> problem.n;
@@ -40,16 +69,14 @@ TSPProblem read(istream& inp) {
 struct Estimator {
 	virtual void init(const TSPProblem& problem) {
 	}
-	virtual double estimate(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) = 0;
+	virtual double estimate(const TSPState& state) = 0;
 };
 
 // 현재 상태가 주어질 때 더 탐색할 필요가 있는지 없는지를 반환한다
 struct Pruner {
 	virtual void init(const TSPProblem& problem) {
 	}
-	virtual bool prune(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		return false;
-	}
+	virtual bool prune(const TSPState& state) = 0;
 };
 
 
@@ -65,22 +92,22 @@ struct OrderSelector {
 				if(i != j)
 					ret[i].push_back(j);
 	}
-	virtual vector<int> getOrder(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
-		return ret[path.back()];
+	virtual vector<int> getOrder(const TSPState& state, double minLength) {
+		return ret[state.path.back()];
 	}
 };
 
 // 탐색의 끝에 도달했는지를 확인하고, 끝에 도달했다면 완전한 경로의 길이를 반환한다
 struct FinishChecker {
 	virtual void init(const TSPProblem& problem) {}
-	virtual pair<bool,double> isFinished(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		if(path.size() == problem.n) return make_pair(true, length);
-		return make_pair(false, length);
+	virtual pair<bool,double> isFinished(const TSPState& state) {
+		if(state.path.size() == state.problem.n) return
+			make_pair(true, state.length);
+		return make_pair(false, state.length);
 	}
 };
 
 struct BaseSolver {
-
 	vector<Estimator*> estimators;
 	OrderSelector* orderSelector;
 	FinishChecker* finishChecker;
@@ -111,56 +138,46 @@ struct BaseSolver {
 
 
 	virtual double solve(const TSPProblem& problem) = 0;
-
 };
 
 struct DepthFirstSolver: public BaseSolver {
 	double minLength;
 
-	bool prune(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
+	bool prune(const TSPState& state) {
 		for(int i = 0; i < estimators.size(); i++)
-			if(estimators[i]->estimate(problem, path, visited, length) >= minLength)
+			if(estimators[i]->estimate(state) >= minLength)
 				return true;
 		return false;
 	}
 
-	void dfs(const TSPProblem& problem, vector<int>& path, bitset<MAX_N>& visited, double length) {
-		if(prune(problem, path, visited, length)) return;
-		pair<bool, double> isFinished = finishChecker->isFinished(problem, path, visited, length);
+	void dfs(TSPState& state) {
+		if(prune(state)) return;
+		pair<bool, double> isFinished = finishChecker->isFinished(state);
 		if(isFinished.first) {
 			minLength = min(minLength, isFinished.second);
 			return;
 		}
 
-		int here = path.back();
-		vector<int> order = orderSelector->getOrder(problem, path, visited, length, minLength);
+		int here = state.path.back();
+		vector<int> order = orderSelector->getOrder(state, minLength);
 		for(int i = 0; i < order.size(); ++i) {
 			int next = order[i];
-			if(visited[next]) continue;
+			if(state.visited[next]) continue;
 
-			visited[next].flip();
-			path.push_back(next);
-
-			dfs(problem, path, visited, length + problem.dist[here][next]);
-
-			path.pop_back();
-			visited[next].flip();
+			state.push(next);
+			dfs(state);
+			state.pop();
 		}
 	}
 
 	virtual double solve(const TSPProblem& problem) {
-		bitset<MAX_N> visited;
-
-		vector<int> path;
-		path.reserve(problem.n);
+		TSPState state(problem);
 
 		minLength = 1e200;
 		for(int start = 0; start < problem.n; ++start) {
-			visited.flip(start);
-			path.push_back(start);
-			dfs(problem, path, visited, 0.0);
-			path.pop_back();
-			visited.flip(start);
+			state.push(start);
+			dfs(state);
+			state.pop();
 		}
 		return minLength;
 	}
@@ -253,25 +270,25 @@ struct IDAStarSolver: public BaseSolver {
 */
 
 struct Optimizer {
-	virtual double optimize(const TSPProblem& problem, vector<int>& path, double curLength) = 0;
+	virtual void optimize(TSPState& state) = 0;
 };
 
 struct TwoOptimizer : public Optimizer {
 
-	virtual double optimize(const TSPProblem& problem, vector<int>& path, double curLength) {
-		//printf("Optimizing from %g ..\n", curLength);
+	virtual void optimize(TSPState& s) {
 		while(true) {
 			bool improved = false;
-			for(int i = 0; i < path.size(); i++) {
-				for(int j = i+2; j+1 < path.size(); j++) {
+			for(int i = 0; i < s.path.size(); i++) {
+				for(int j = i+2; j+1 < s.path.size(); j++) {
+					//           A  +   B               C        D
 					// (.. path[i]) + (path[j] .. path[i+1]) + (path[j+1] ..)
-					double delta = problem.dist[path[i]][path[j]] + problem.dist[path[i+1]][path[j+1]]
-						- problem.dist[path[i]][path[i+1]] - problem.dist[path[j]][path[j+1]];
+					int A = s.path[i], B = s.path[j], C = s.path[i+1], D = s.path[j+1];
+					double delta = s.problem.dist[A][B] + s.problem.dist[C][D]
+						- s.problem.dist[A][C] - s.problem.dist[B][D];
 					if(delta < -1e-9) {
-						//printf("went down by %g\n", delta);
-						curLength += delta;
+						s.length += delta;
 						improved = true;
-						reverse(path.begin() + i + 1, path.begin() + j + 1);
+						reverse(s.path.begin() + i + 1, s.path.begin() + j + 1);
 						break;
 					}
 				}
@@ -279,34 +296,30 @@ struct TwoOptimizer : public Optimizer {
 			}
 			if(!improved) break;
 		}
-		//printf("Resulted %g\n", curLength);
-		return curLength;
 	}
 
 };
 
 struct SwapOptimizer: public Optimizer {
 
-	virtual double optimize(const TSPProblem& problem, vector<int>& path, double curLength) {
-		//printf("Optimizing from %g ..\n", curLength);
+	virtual void optimize(TSPState& s) {
 		while(true) {
 			bool improved = false;
-			for(int i = 0; i < path.size(); i++) {
-				for(int j = i+1; j < path.size(); j++) {
-					int A = path[i], B = path[j];
+			for(int i = 0; i < s.path.size(); i++) {
+				for(int j = i+1; j < s.path.size(); j++) {
+					int A = s.path[i], B = s.path[j];
 					double delta = 0;
 					if(i > 0)
-						delta = delta - problem.dist[path[i-1]][A] + problem.dist[path[i-1]][B];
-					if(j + 1 < path.size())
-						delta = delta - problem.dist[B][path[j+1]] + problem.dist[A][path[j+1]];
+						delta = delta - s.problem.dist[s.path[i-1]][A] + s.problem.dist[s.path[i-1]][B];
+					if(j + 1 < s.path.size())
+						delta = delta - s.problem.dist[B][s.path[j+1]] + s.problem.dist[A][s.path[j+1]];
 					if(i + 1 < j)
-						delta = delta - problem.dist[A][path[i+1]] + problem.dist[B][path[i+1]]
-							- problem.dist[path[j-1]][B] + problem.dist[path[j-1]][A];
+						delta = delta - s.problem.dist[A][s.path[i+1]] + s.problem.dist[B][s.path[i+1]]
+							- s.problem.dist[s.path[j-1]][B] + s.problem.dist[s.path[j-1]][A];
 					if(delta < 0) {
-						//printf("went down by %g\n", delta);
-						curLength += delta;
+						s.length += delta;
 						improved = true;
-						swap(path[i], path[j]);
+						swap(s.path[i], s.path[j]);
 						break;
 					}
 				}
@@ -314,8 +327,6 @@ struct SwapOptimizer: public Optimizer {
 			}
 			if(!improved) break;
 		}
-		//printf("Resulted %g\n", curLength);
-		return curLength;
 	}
 
 };
@@ -329,14 +340,12 @@ struct OptimizingFinishChecker: public FinishChecker {
 		optimizers.push_back(optimizer);
 	}
 
-	virtual pair<bool,double> isFinished(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		if(path.size() < problem.n) return make_pair(false, length);
-		vector<int> optimized = path;
-		for(int i = 0; i < optimizers.size(); i++) {
-			length = optimizers[i]->optimize(problem, optimized, length);
-		}
-
-		return make_pair(true, length);
+	virtual pair<bool,double> isFinished(const TSPState& state) {
+		if(state.path.size() < state.problem.n) return make_pair(false, state.length);
+		TSPState optimized = state;
+		for(int i = 0; i < optimizers.size(); i++)
+			optimizers[i]->optimize(optimized);
+		return make_pair(true, optimized.length);
 	}
 
 };
@@ -417,16 +426,16 @@ struct MemoizingFinishChecker : public FinishChecker {
 		return ret;
 	}
 
-	virtual pair<bool,double> isFinished(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		if(problem.n == path.size()) return make_pair(true, length);
-		if(problem.n - path.size() == cacheDepth) {
+	virtual pair<bool,double> isFinished(const TSPState& state) {
+		if(state.problem.n == state.path.size()) return make_pair(true, state.length);
+		if(state.problem.n - state.path.size() == cacheDepth) {
 			vector<int> toVisit;
-			for(int i = 0; i < problem.n; i++)
-				if(!visited[i])
+			for(int i = 0; i < state.problem.n; i++)
+				if(!state.visited[i])
 					toVisit.push_back(i);
-			return make_pair(true, length + solve(problem, path.back(), toVisit));
+			return make_pair(true, state.length + solve(state.problem, state.path.back(), toVisit));
 		}
-		return make_pair(false, length);
+		return make_pair(false, state.length);
 	}
 };
 
@@ -445,40 +454,43 @@ struct NearestNeighborOrderSelector : public OrderSelector {
 				ret[i].push_back(ord[j].second);
 		}
 	}
-	virtual vector<int> getOrder(const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
-		return ret[path.back()];
+	virtual vector<int> getOrder(const TSPState& state, double minLength) {
+		return ret[state.path.back()];
 	}
 };
 
 struct PathSwapPruner : public Pruner {
 
-	virtual bool prune(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		if(path.size() < 4) return false;
-		const int a = path[path.size()-4];
-		const int b = path[path.size()-3];
-		const int c = path[path.size()-2];
-		const int d = path[path.size()-1];
-		if(problem.dist[a][b] + problem.dist[c][d] > problem.dist[a][c] + problem.dist[b][d]) return true;
+	virtual bool prune(const TSPState& state) {
+		if(state.path.size() < 4) return false;
+		const int a = state.path[state.path.size()-4];
+		const int b = state.path[state.path.size()-3];
+		const int c = state.path[state.path.size()-2];
+		const int d = state.path[state.path.size()-1];
+		return state.problem.dist[a][b] + state.problem.dist[c][d] >
+			state.problem.dist[a][c] + state.problem.dist[b][d];
 	}
 };
 
 struct PathReversePruner: public Pruner {
 
-	virtual bool prune(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		if(path.size() < 3) return false;
-		int c = path[path.size()-2];
-		int d = path.back();
-		for(int i = 0; i+2 < path.size(); ++i) {
-			int a = path[i], b = path[i+1];
-			if(problem.dist[a][c] + problem.dist[b][d] < problem.dist[a][b] + problem.dist[c][d]) return true;
+	virtual bool prune(const TSPState& state) {
+		if(state.path.size() < 3) return false;
+		int c = state.path[state.path.size()-2];
+		int d = state.path.back();
+		for(int i = 0; i+2 < state.path.size(); ++i) {
+			int a = state.path[i], b = state.path[i+1];
+			if(state.problem.dist[a][c] + state.problem.dist[b][d] <
+					state.problem.dist[a][b] + state.problem.dist[c][d])
+				return true;
 		}
 		return false;
 	}
 };
 
 struct NaiveEstimator : public Estimator {
-	virtual double estimate(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		return length;
+	virtual double estimate(const TSPState& state) {
+		return state.length;
 	}
 };
 
@@ -495,10 +507,10 @@ struct IncomingEdgeEstimator : public Estimator {
 		}
 	}
 
-	virtual double estimate(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		double lowerBound = length;
-		for(int i = 0; i < problem.n; ++i)
-			if(!visited[i])
+	virtual double estimate(const TSPState& state) {
+		double lowerBound = state.length;
+		for(int i = 0; i < state.problem.n; ++i)
+			if(!state.visited[i])
 				lowerBound += minEdge[i];
 		return lowerBound;
 	}
@@ -539,19 +551,17 @@ struct MSTEstimator: public Estimator {
 		sort(edges.begin(), edges.end());
 	}
 
-	double getLowerBound(const TSPProblem& problem, int here, const bitset<MAX_N>& visited) {
-		UnionFind* uf = new UnionFind(problem.n);
+	double getLowerBound(const TSPState& state) {
+		int here = state.path.empty() ? -1 : state.path.back();
+		UnionFind* uf = new UnionFind(state.problem.n);
 		double taken = 0;
-		vector<vector<int> > adj(problem.n);
 		for(int i = 0; i < edges.size(); i++) {
 			int a = edges[i].second.first, b = edges[i].second.second;
-			if(a != here && visited[a]) continue;
-			if(b != here && visited[b]) continue;
+			if(a != here && state.visited[a]) continue;
+			if(b != here && state.visited[b]) continue;
 			a = uf->find(a); b = uf->find(b);
 			if(a != b) {
 				taken += edges[i].first;
-				adj[a].push_back(b);
-				adj[b].push_back(a);
 				uf->join(a, b);
 			}
 		}
@@ -559,8 +569,8 @@ struct MSTEstimator: public Estimator {
 		return taken;
 	}
 
-	virtual double estimate(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length) {
-		return length + getLowerBound(problem, path.empty() ? -1 : path.back(), visited);
+	virtual double estimate(const TSPState& state) {
+		return state.length + getLowerBound(state);
 	}
 };
 
@@ -575,19 +585,14 @@ struct EstimatingOrderSelector : public OrderSelector {
 		estimator->init(problem);
 	}
 
-	virtual vector<int> getOrder(const TSPProblem& problem, const vector<int>& path, const bitset<MAX_N>& visited, double length, double minLength) {
+	virtual vector<int> getOrder(const TSPState& state, double minLength) {
 		vector<pair<double,int> > ord;
-		vector<int> newPath = path;
-		newPath.push_back(-1);
-		bitset<MAX_N> newVisited = visited;
-		for(int i = 0; i < problem.n; i++) {
-			if(visited[i]) continue;
-			newPath.back() = i;
-			newVisited.flip(i);
-
-			ord.push_back(make_pair(estimator->estimate(problem, newPath, newVisited, length + problem.dist[path.back()][i]), i));
-
-			newVisited.flip(i);
+		TSPState newState = state;
+		for(int i = 0; i < state.problem.n; i++) {
+			if(newState.visited[i]) continue;
+			newState.push(i);
+			ord.push_back(make_pair(estimator->estimate(newState), i));
+			newState.pop();
 		}
 		sort(ord.begin(), ord.end());
 		vector<int> ret;
