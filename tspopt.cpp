@@ -738,11 +738,12 @@ void setupSolvers() {
 	selectorNames.push_back("Nearest");
 	selectors.push_back(new NearestNeighborOrderSelector());
 
+	/*
 	selectorNames.push_back("IncomingEdge");
 	selectors.push_back(new EstimatingOrderSelector( new IncomingEdgeEstimator()));
 
 	selectorNames.push_back("MST");
-	selectors.push_back(new EstimatingOrderSelector( new MSTEstimator()));
+	selectors.push_back(new EstimatingOrderSelector( new MSTEstimator()));*/
 
 	// SETUP FINISHCHECKERS
 	vector<string> checkerNames;
@@ -753,13 +754,14 @@ void setupSolvers() {
 
 	checkerNames.push_back("Memoization");
 	checkers.push_back(new MemoizingFinishChecker(500000));
+	/*
 	{
 		checkerNames.push_back("OptimizingLocalSearch");
 		OptimizingFinishChecker* opt = new OptimizingFinishChecker();
 		opt->addOptimizer(new LocalSearchOptimizer());
 		//opt->addOptimizer(new TwoOptimizer());
 		checkers.push_back(opt);
-	}
+	}*/
 
 
 	{
@@ -770,6 +772,7 @@ void setupSolvers() {
 		checkers.push_back(opt);
 	}
 
+	/*
 	{
 		checkerNames.push_back("OptimizingTwo");
 		OptimizingFinishChecker* opt = new OptimizingFinishChecker();
@@ -783,14 +786,14 @@ void setupSolvers() {
 		opt->addOptimizer(new SwapOptimizer());
 		opt->addOptimizer(new TwoOptimizer());
 		checkers.push_back(opt);
-	}
+	}*/
 
 	// SETUP PRUNERS
 	vector<string> prunerNames;
 	vector<Pruner*> pruners;
 
-	prunerNames.push_back("PathSwap");
-	pruners.push_back(new PathSwapPruner());
+	//prunerNames.push_back("PathSwap");
+	//pruners.push_back(new PathSwapPruner());
 
 	prunerNames.push_back("PathReverse");
 	pruners.push_back(new PathReversePruner());
@@ -805,8 +808,8 @@ void setupSolvers() {
 	estimatorNames.push_back("IncomingEdge");
 	estimators.push_back(new IncomingEdgeEstimator());
 
-	estimatorNames.push_back("SmallestEdges");
-	estimators.push_back(new SmallestEdgesEstimator());
+	//estimatorNames.push_back("SmallestEdges");
+	//estimators.push_back(new SmallestEdgesEstimator());
 
 	estimatorNames.push_back("MST");
 	estimators.push_back(new MSTEstimator());
