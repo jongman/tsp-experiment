@@ -409,15 +409,17 @@ struct OptimizingFinishChecker: public FinishChecker {
 
 };
 
+// 방문할 정점이 cacheDepth 이하로 남은 문제들에 대해 메모이제이션을 수행한다
 struct MemoizingFinishChecker : public FinishChecker {
-
 	int bino[MAX_N][MAX_N];
 	int stateLimit, cacheDepth;
 	vector<vector<double> > cache[MAX_N];
 
+	// 생성자의 인자로 사용할 캐시 배열의 총 크기 제한을 지정한다.
 	MemoizingFinishChecker(int stateLimit) : stateLimit(stateLimit) {
 	}
 
+	// 일대일 대응 함수에 사용할 이항계수를 미리 계산해 둔다
 	void calcBino(const TSPProblem& problem) {
 		memset(bino, 0, sizeof(bino));
 		for(int i = 0; i < MAX_N; ++i) {
@@ -428,6 +430,21 @@ struct MemoizingFinishChecker : public FinishChecker {
 		}
 	}
 
+	virtual void init(const TSPProblem& problem) {
+		calcBino(problem);
+		determineCacheDepth(problem);
+
+		// 캐시 배열을 초기화한다
+		for(int i = 0; i < problem.n; i++) {
+			cache[i].clear();
+			cache[i].resize(cacheDepth + 1);
+			for(int j = 1; j <= cacheDepth; j++) {
+				cache[i][j].resize(bino[problem.n][j], -1);
+			}
+		}
+	}
+
+	// cache 배열의 크기가 stateLimit 을 초과하지 않는 최대의 깊이를 계산한다.
 	void determineCacheDepth(const TSPProblem& problem) {
 		cacheDepth = 0;
 		int stateCount = problem.n;
@@ -439,60 +456,53 @@ struct MemoizingFinishChecker : public FinishChecker {
 			stateCount += newStates;
 			++cacheDepth;
 		}
-		//fprintf(stderr, "Determined a cache depth of %d StateCount = %d\n", cacheDepth, stateCount);
 	}
 
-	int calcIndex(const TSPProblem& problem, const vector<int>& selected) {
+	// solve() 에서 쓰는 일대일 대응 함수.
+	int calcIndex(const TSPState& state) {
 		int ret = 0;
-		for(int i = 0; i < selected.size(); ++i)
-			ret += bino[problem.n - selected[i] - 1][selected.size() - i];
+		int visitedCount = state.visited.count();
+		for(int i = 0; i < state.problem.n; ++i)
+			if(state.visited[i]) {
+				ret += bino[state.problem.n - i - 1][visitedCount];
+				visitedCount--;
+			}
 		return ret;
 	}
 
-	virtual void init(const TSPProblem& problem) {
-		calcBino(problem);
-		determineCacheDepth(problem);
 
-		//test();
+	// 현재 위치가 here 이고, m 개의 정점을 아직 방문하지 않았으며
+	// 방문하지 않은 정점들의 목록이 toVisit 일 때 남은 정점들을 방문하기
+	// 위한 최단 경로의 길이를 반환한다
+	double solve(TSPState& state) {
+		// 기저 사례 확인
+		if(state.path.size() == state.problem.n) return 0;
+		// 일대일 대응 함수를 써서 toVisit 을 정수로 변환한다
+		int idx = calcIndex(state);
 
-		for(int i = 0; i < problem.n; i++) {
-			cache[i].clear();
-			cache[i].resize(cacheDepth + 1);
-			for(int j = 1; j <= cacheDepth; j++) {
-				cache[i][j].resize(bino[problem.n][j], -1);
-			}
-		}
-	}
-
-	double solve(const TSPProblem& problem, int here, const vector<int>& toVisit) {
-		if(toVisit.empty()) return 0;
-		int idx = calcIndex(problem, toVisit);
-		double& ret = cache[here][toVisit.size()][idx];
+		// 메모이제이션
+		double& ret = cache[state.path.back()][state.problem.n - state.visited.count()][idx];
 		if(ret >= 0) return ret;
+
 		ret = 1e200;
-		for(int i = 0; i < toVisit.size(); ++i) {
-			vector<int> toVisit2 = toVisit;
-			toVisit2.erase(toVisit2.begin() + i);
-			ret = min(ret, problem.dist[here][toVisit[i]] + solve(problem, toVisit[i], toVisit2));
+		for(int next = 0; next < state.problem.n; ++next) {
+			if(state.visited[next]) continue;
+			double cand = state.problem.dist[state.path.back()][next];
+			state.push(next);
+			cand += solve(state);
+			state.pop();
+			ret = min(ret, cand);
 		}
-		/*
-		   printf("solve(here=%d, toVisit=", here);
-		   for(int i = 0; i < toVisit.size(); i++) {
-		   printf("%s%d", (i ? "," : ""), toVisit[i]);
-		   }
-		   printf(") = %g\n", ret);
-		   */
 		return ret;
 	}
 
 	virtual pair<bool,double> isFinished(const TSPState& state) {
 		if(state.problem.n == state.path.size()) return make_pair(true, state.length);
+
+		// 남은 정점의 수가 캐시 깊이와 같다면 메모이제이션을 사용해 문제를 해결한다
 		if(state.problem.n - state.path.size() == cacheDepth) {
-			vector<int> toVisit;
-			for(int i = 0; i < state.problem.n; i++)
-				if(!state.visited[i])
-					toVisit.push_back(i);
-			return make_pair(true, state.length + solve(state.problem, state.path.back(), toVisit));
+			TSPState copy = state;
+			return make_pair(true, state.length + solve(copy));
 		}
 		return make_pair(false, state.length);
 	}
