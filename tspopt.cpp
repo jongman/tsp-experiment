@@ -10,10 +10,12 @@
 #include<vector>
 #include<fstream>
 #include<limits>
+#define ONLINE_JUDGE
+
 using namespace std;
 
 const int INT_MAX = numeric_limits<int>::max();
-const int MAX_N = 101;
+const int MAX_N = 30;
 
 
 // 여행하는 외판원 문제의 입력을 정의한다
@@ -69,6 +71,18 @@ TSPProblem read(istream& inp) {
 	return problem;
 }
 
+#ifdef ONLINE_JUDGE
+
+TSPProblem readAOJ(istream& inp) {
+	TSPProblem problem;
+	inp >> problem.n;
+	for(int i = 0; i < problem.n; i++)
+		for(int j = 0; j < problem.n; j++)
+			inp >> problem.dist[i][j];
+	return problem;
+}
+
+#endif
 
 // 현재 상태가 주어질 때 종료 상태까지 거리의 하한을 계산한다
 struct Estimator {
@@ -412,7 +426,12 @@ struct OptimizingFinishChecker: public FinishChecker {
 // 방문할 정점이 cacheDepth 이하로 남은 문제들에 대해 메모이제이션을 수행한다
 struct MemoizingFinishChecker : public FinishChecker {
 	int bino[MAX_N][MAX_N];
-	int stateLimit, cacheDepth;
+	int stateLimit;
+
+	// 마지막 cacheDepth 개의 정점에 대해 메모이제이션을 수행한다
+	int cacheDepth;
+
+	// solve() 의 반환값을 저장하는 캐시 배열
 	vector<vector<double> > cache[MAX_N];
 
 	// 생성자의 인자로 사용할 캐시 배열의 총 크기 제한을 지정한다.
@@ -471,9 +490,8 @@ struct MemoizingFinishChecker : public FinishChecker {
 	}
 
 
-	// 현재 위치가 here 이고, m 개의 정점을 아직 방문하지 않았으며
-	// 방문하지 않은 정점들의 목록이 toVisit 일 때 남은 정점들을 방문하기
-	// 위한 최단 경로의 길이를 반환한다
+	// state 에서 종료 상태까지 도달하기 위한 최단 경로를 반환한다.
+	// 이 때 아직 방문하지 않은 정점의 수는 cacheDepth 이하여야 한다.
 	double solve(TSPState& state) {
 		// 기저 사례 확인
 		if(state.path.size() == state.problem.n) return 0;
@@ -895,6 +913,7 @@ double solve(const string& algorithm, const TSPProblem& problem) {
 int main(int argc, char* argv[]) {
 	setupSolvers();
 
+#ifndef ONLINE_JUDGE
 	if(argc != 4) {
 		printf("Usage) %s [algorithm] [input] [output]\n\n", argv[0]);
 		printf("algorithm = ");
@@ -914,5 +933,13 @@ int main(int argc, char* argv[]) {
 	for(int i = 0; i < cases; ++i) {
 		outp << solve(argv[1], read(inp)) << endl;
 	}
+#else
+	int cases;
+	cin >> cases;
+	for(int i = 0; i < cases; ++i)
+		printf("%.10lf\n", solve("DFS:Nearest:Memoization:PathReverse:IncomingEdge,MST", readAOJ(cin)));
+
+
+#endif
 }
 
